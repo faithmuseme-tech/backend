@@ -46,7 +46,7 @@ class ProductSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'name', 'slug', 'brand', 'brand_id', 'category', 'category_id',
             'description', 'price', 'original_price', 'delivery_charge', 'stock', 'sku',
-            'is_active', 'is_featured', 'is_new_arrival', 'is_best_seller', 'badge',
+            'is_active', 'is_featured', 'is_new_arrival', 'is_best_seller', 'badge', 'specs',
             'images', 'discount', 'in_stock', 'avg_rating', 'review_count',
             'created_at',
         )
