@@ -175,7 +175,11 @@ class TraderProductListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         if not is_approved_trader(self.request.user):
             raise PermissionDenied('Your trader account is not approved yet.')
-        slug = slugify(self.request.data.get('name', '')) + '-' + str(uuid.uuid4())[:8]
+        uid = str(uuid.uuid4())[:8]
+        slug = slugify(self.request.data.get('name', uid)) + '-' + uid
+        # ensure slug uniqueness
+        while Product.objects.filter(slug=slug).exists():
+            slug = slugify(self.request.data.get('name', uid)) + '-' + str(uuid.uuid4())[:8]
         serializer.save(seller=self.request.user, slug=slug)
 
 
@@ -189,7 +193,10 @@ class TraderProductDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_update(self, serializer):
         name = self.request.data.get('name', serializer.instance.name)
-        new_slug = slugify(name) + '-' + str(serializer.instance.slug).split('-')[-1]
+        uid = str(uuid.uuid4())[:8]
+        new_slug = slugify(name) + '-' + uid
+        while Product.objects.filter(slug=new_slug).exclude(pk=serializer.instance.pk).exists():
+            new_slug = slugify(name) + '-' + str(uuid.uuid4())[:8]
         serializer.save(slug=new_slug)
 
 
