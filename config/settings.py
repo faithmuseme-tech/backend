@@ -97,6 +97,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.User'
 
+# ── Cache (DB-backed, zero extra infra) ───────────────────────────────────────
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'app_cache',
+        'TIMEOUT': 300,  # 5 minutes default
+        'OPTIONS': {'MAX_ENTRIES': 1000},
+    }
+}
+
 # ── Django REST Framework ──────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
