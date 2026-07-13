@@ -1,34 +1,28 @@
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
-from decouple import config
 
 User = get_user_model()
 
+ADMIN_EMAIL = 'primeaisle@admin.com'
+ADMIN_PASSWORD = 'primeaisle@admin2026'
+ADMIN_USERNAME = 'PrimeAisle'
+
 
 class Command(BaseCommand):
-    help = 'Create or update superadmin from environment variables'
+    help = 'Create or update superadmin'
 
     def handle(self, *args, **kwargs):
-        email = config('ADMIN_EMAIL', default='')
-        password = config('ADMIN_PASSWORD', default='')
-        username = config('ADMIN_USERNAME', default='admin')
-
-        if not email or not password:
-            self.stdout.write(self.style.WARNING('ADMIN_EMAIL or ADMIN_PASSWORD not set, skipping.'))
-            return
-
         user, created = User.objects.get_or_create(
-            email=email,
-            defaults={'username': username},
+            email=ADMIN_EMAIL,
+            defaults={'username': ADMIN_USERNAME},
         )
-
-        user.username = username
+        user.username = ADMIN_USERNAME
         user.is_staff = True
         user.is_superuser = True
         user.is_admin = True
         user.is_active = True
-        user.set_password(password)
+        user.set_password(ADMIN_PASSWORD)
         user.save()
 
         action = 'created' if created else 'updated'
-        self.stdout.write(self.style.SUCCESS(f'Superadmin {email} {action} successfully.'))
+        self.stdout.write(self.style.SUCCESS(f'Superadmin {ADMIN_EMAIL} {action} successfully.'))
