@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 from django.db import models
 from django.conf import settings
@@ -65,6 +66,8 @@ class Product(models.Model):
         return self.DEFAULT_DELIVERY_CHARGE
 
     def save(self, *args, **kwargs):
+        if not self.sku:
+            self.sku = 'SKU-' + str(uuid.uuid4())[:8].upper()
         if self.delivery_charge is None or self.delivery_charge <= 0:
             self.delivery_charge = self.DEFAULT_DELIVERY_CHARGE
         super().save(*args, **kwargs)
