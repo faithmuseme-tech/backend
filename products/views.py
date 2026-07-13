@@ -193,11 +193,15 @@ class TraderProductDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_update(self, serializer):
         name = self.request.data.get('name', serializer.instance.name)
-        uid = str(uuid.uuid4())[:8]
-        new_slug = slugify(name) + '-' + uid
-        while Product.objects.filter(slug=new_slug).exclude(pk=serializer.instance.pk).exists():
-            new_slug = slugify(name) + '-' + str(uuid.uuid4())[:8]
-        serializer.save(slug=new_slug)
+        # only regenerate slug if name actually changed
+        if name != serializer.instance.name:
+            uid = str(uuid.uuid4())[:8]
+            new_slug = slugify(name) + '-' + uid
+            while Product.objects.filter(slug=new_slug).exclude(pk=serializer.instance.pk).exists():
+                new_slug = slugify(name) + '-' + str(uuid.uuid4())[:8]
+            serializer.save(slug=new_slug)
+        else:
+            serializer.save()
 
 
 class TraderProductImageView(APIView):

@@ -55,6 +55,15 @@ class ProductSerializer(serializers.ModelSerializer):
     def get_delivery_charge(self, obj):
         return obj.effective_delivery_charge
 
+    def validate_specs(self, value):
+        import json
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except (ValueError, TypeError):
+                return {}
+        return value if isinstance(value, dict) else {}
+
 
 class ProductListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views."""
