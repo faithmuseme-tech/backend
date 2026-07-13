@@ -1,0 +1,219 @@
+import uuid
+from rest_framework import generics, filters, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.db.models import Q
+from django.utils.text import slugify
+from .models import Product, ProductImage
+from .serializers import ProductSerializer, ProductListSerializer, ProductImageSerializer
+
+
+def is_approved_trader(user):
+    return (
+        user.is_authenticated and
+        user.is_trader and
+        hasattr(user, 'trader_profile') and
+        user.trader_profile.is_approved
+    )
+
+
+class ProductListView(generics.ListAPIView):
+    serializer_class = ProductListSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'description', 'brand__name', 'category__name']
+    ordering_fields = ['price', 'created_at', 'avg_rating']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        qs = Product.objects.filter(is_active=True).select_related('brand', 'category').prefetch_related('images', 'reviews')
+        category = self.request.query_params.get('category')
+        brand = self.request.query_params.get('brand')
+        min_price = self.request.query_params.get('min_price')
+        max_price = self.request.query_params.get('max_price')
+        in_stock = self.request.query_params.get('in_stock')
+
+        if category:
+            qs = qs.filter(category__slug=category)
+        if brand:
+            qs = qs.filter(brand__slug=brand)
+        if min_price:
+            qs = qs.filter(price__gte=min_price)
+        if max_price:
+            qs = qs.filter(price__lte=max_price)
+        if in_stock == 'true':
+            qs = qs.filter(stock__gt=0)
+        return qs
+
+
+class ProductDetailView(generics.RetrieveAPIView):
+    queryset = Product.objects.filter(is_active=True).select_related('brand', 'category').prefetch_related('images', 'reviews')
+    serializer_class = ProductSerializer
+
+    def get_object(self):
+        lookup = self.kwargs.get('slug')
+        qs = self.get_queryset()
+        # support both numeric ID and slug
+        if str(lookup).isdigit():
+            return generics.get_object_or_404(qs, pk=lookup)
+        return generics.get_object_or_404(qs, slug=lookup)
+
+
+class FeaturedProductsView(generics.ListAPIView):
+    serializer_class = ProductListSerializer
+
+    def get_queryset(self):
+        return Product.objects.filter(is_active=True, is_featured=True).select_related('brand', 'category').prefetch_related('images', 'reviews')[:12]
+
+
+class NewArrivalsView(generics.ListAPIView):
+    serializer_class = ProductListSerializer
+
+    def get_queryset(self):
+        return Product.objects.filter(is_active=True, is_new_arrival=True).select_related('brand', 'category').prefetch_related('images', 'reviews')[:12]
+
+
+class BestSellersView(generics.ListAPIView):
+    serializer_class = ProductListSerializer
+
+    def get_queryset(self):
+        return Product.objects.filter(is_active=True, is_best_seller=True).select_related('brand', 'category').prefetch_related('images', 'reviews')[:12]
+
+
+class FlashDealsView(generics.ListAPIView):
+    serializer_class = ProductListSerializer
+
+    def get_queryset(self):
+        return Product.objects.filter(is_active=True, original_price__isnull=False).select_related('brand', 'category').prefetch_related('images', 'reviews').order_by('-created_at')[:8]
+
+
+class SearchView(generics.ListAPIView):
+    serializer_class = ProductListSerializer
+
+    def get_queryset(self):
+        q = self.request.query_params.get('q', '').strip()
+        if not q:
+            return Product.objects.none()
+
+        base_qs = Product.objects.filter(is_active=True).select_related('brand', 'category').prefetch_related('images', 'reviews')
+
+        # Build a broad OR filter across all tokens and all fields
+        tokens = [t for t in q.split() if t]
+        combined = Q()
+        for token in tokens:
+            combined |= (
+                Q(name__icontains=token) |
+                Q(description__icontains=token) |
+                Q(brand__name__icontains=token) |
+                Q(category__name__icontains=token) |
+                Q(badge__icontains=token) |
+                Q(sku__icontains=token)
+            )
+        # Also match the full phrase
+        combined |= (
+            Q(name__icontains=q) |
+            Q(description__icontains=q) |
+            Q(brand__name__icontains=q) |
+            Q(category__name__icontains=q)
+        )
+
+        direct_hits = base_qs.filter(combined)
+
+        # Expand: pull in same-category products of direct hits
+        hit_category_ids = direct_hits.values_list('category_id', flat=True).distinct()
+        category_related = base_qs.filter(category_id__in=hit_category_ids).exclude(
+            id__in=direct_hits.values_list('id', flat=True)
+        )
+
+        # Combine: direct hits first, then category-related
+        from itertools import chain
+        return list(chain(direct_hits, category_related))
+
+
+class RelatedProductsView(generics.ListAPIView):
+    serializer_class = ProductListSerializer
+
+    def get_queryset(self):
+        slug = self.kwargs["slug"]
+        try:
+            product = Product.objects.get(slug=slug, is_active=True)
+        except Product.DoesNotExist:
+            return Product.objects.none()
+
+        qs = (
+            Product.objects
+            .filter(is_active=True)
+            .exclude(slug=slug)
+            .select_related("brand", "category")
+            .prefetch_related("images", "reviews")
+        )
+
+        same_category = list(qs.filter(category=product.category)[:4])
+        if len(same_category) >= 4:
+            return same_category
+
+        same_brand = list(
+            qs.filter(brand=product.brand).exclude(category=product.category)[:4 - len(same_category)]
+        )
+        return same_category + same_brand
+
+
+# ── Trader Product Views ───────────────────────────────────────────────────────
+
+class TraderProductListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_serializer_class(self):
+        return ProductSerializer if self.request.method == 'POST' else ProductListSerializer
+
+    def get_queryset(self):
+        return Product.objects.filter(seller=self.request.user).select_related('brand', 'category').prefetch_related('images', 'reviews')
+
+    def perform_create(self, serializer):
+        if not is_approved_trader(self.request.user):
+            raise PermissionDenied('Your trader account is not approved yet.')
+        slug = slugify(self.request.data.get('name', '')) + '-' + str(uuid.uuid4())[:8]
+        serializer.save(seller=self.request.user, slug=slug)
+
+
+class TraderProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = ProductSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        return Product.objects.filter(seller=self.request.user)
+
+    def perform_update(self, serializer):
+        name = self.request.data.get('name', serializer.instance.name)
+        new_slug = slugify(name) + '-' + str(serializer.instance.slug).split('-')[-1]
+        serializer.save(slug=new_slug)
+
+
+class TraderProductImageView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk):
+        try:
+            product = Product.objects.get(pk=pk, seller=request.user)
+        except Product.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        image = request.FILES.get('image')
+        if not image:
+            return Response({'error': 'No image provided.'}, status=status.HTTP_400_BAD_REQUEST)
+        is_primary = not product.images.exists()
+        img = ProductImage.objects.create(product=product, image=image, is_primary=is_primary)
+        return Response(ProductImageSerializer(img).data, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, pk):
+        image_id = request.data.get('image_id')
+        try:
+            img = ProductImage.objects.get(id=image_id, product__seller=request.user)
+        except ProductImage.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        img.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
