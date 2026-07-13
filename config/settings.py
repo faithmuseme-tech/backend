@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'reviews',
     'wishlist',
     'adminpanel',
+    'notifications',
 ]
 
 MIDDLEWARE = [
