@@ -14,3 +14,4 @@ venv/
 env/
 server.log
 *.log
+staticfiles/
