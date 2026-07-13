@@ -18,13 +18,25 @@ class Command(BaseCommand):
             return
 
         if User.objects.filter(email=email).exists():
-            self.stdout.write(self.style.SUCCESS(f'Admin {email} already exists.'))
+            user = User.objects.get(email=email)
+            # Ensure flags are set correctly even if user already exists
+            if not user.is_superuser or not user.is_staff:
+                user.is_superuser = True
+                user.is_staff = True
+                user.is_admin = True
+                user.save()
+                self.stdout.write(self.style.SUCCESS(f'Admin flags updated for {email}.'))
+            else:
+                self.stdout.write(self.style.SUCCESS(f'Admin {email} already exists.'))
             return
 
-        User.objects.create_superuser(
+        user = User(
             username=username,
             email=email,
-            password=password,
             is_admin=True,
+            is_staff=True,
+            is_superuser=True,
         )
+        user.set_password(password)
+        user.save()
         self.stdout.write(self.style.SUCCESS(f'Superadmin {email} created successfully.'))
