@@ -11,7 +11,7 @@ class ReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Review
         fields = ('id', 'product', 'product_name', 'user_name', 'user_email', 'user_avatar', 'rating', 'title', 'body', 'created_at')
-        read_only_fields = ('id', 'user_name', 'user_email', 'user_avatar', 'product_name', 'created_at')
+        read_only_fields = ('id', 'product', 'user_name', 'user_email', 'user_avatar', 'product_name', 'created_at')
 
     def get_user_name(self, obj):
         full = obj.user.get_full_name().strip()
