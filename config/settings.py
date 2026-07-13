@@ -122,6 +122,11 @@ CORS_ALLOWED_ORIGINS = config(
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
 
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='https://web-production-1643f.up.railway.app'
+).split(',')
+
 # ── Cloudinary ─────────────────────────────────────────────────────────────────
 import cloudinary
 
