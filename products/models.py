@@ -29,6 +29,7 @@ class Product(models.Model):
     is_new_arrival = models.BooleanField(default=False)
     is_best_seller = models.BooleanField(default=False)
     badge = models.CharField(max_length=50, blank=True)
+    specs = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
