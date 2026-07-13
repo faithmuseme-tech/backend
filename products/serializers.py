@@ -1,0 +1,92 @@
+from rest_framework import serializers
+from .models import Product, ProductImage
+from brands.serializers import BrandSerializer
+from categories.serializers import CategorySerializer
+
+
+class ProductImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductImage
+        fields = ('id', 'image', 'alt_text', 'is_primary', 'order')
+
+    def get_image(self, obj):
+        url = obj.image.url
+        if url.startswith('http'):
+            return url
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(url)
+        return f"http://127.0.0.1:8000{url}"
+
+
+class ProductSerializer(serializers.ModelSerializer):
+    brand = BrandSerializer(read_only=True)
+    category = CategorySerializer(read_only=True)
+    delivery_charge = serializers.SerializerMethodField()
+    brand_id = serializers.PrimaryKeyRelatedField(
+        source='brand',
+        queryset=__import__('brands.models', fromlist=['Brand']).Brand.objects.all(),
+        write_only=True, required=False, allow_null=True
+    )
+    category_id = serializers.PrimaryKeyRelatedField(
+        source='category',
+        queryset=__import__('categories.models', fromlist=['Category']).Category.objects.all(),
+        write_only=True
+    )
+    images = ProductImageSerializer(many=True, read_only=True)
+    discount = serializers.ReadOnlyField()
+    in_stock = serializers.ReadOnlyField()
+    avg_rating = serializers.ReadOnlyField()
+    review_count = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Product
+        fields = (
+            'id', 'name', 'slug', 'brand', 'brand_id', 'category', 'category_id',
+            'description', 'price', 'original_price', 'delivery_charge', 'stock', 'sku',
+            'is_active', 'is_featured', 'is_new_arrival', 'is_best_seller', 'badge',
+            'images', 'discount', 'in_stock', 'avg_rating', 'review_count',
+            'created_at',
+        )
+        read_only_fields = ('slug',)
+
+    def get_delivery_charge(self, obj):
+        return obj.effective_delivery_charge
+
+
+class ProductListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for list views."""
+    brand_name = serializers.CharField(source='brand.name', read_only=True)
+    delivery_charge = serializers.SerializerMethodField()
+    category_name = serializers.CharField(source='category.name', read_only=True)
+    primary_image = serializers.SerializerMethodField()
+    discount = serializers.ReadOnlyField()
+    in_stock = serializers.ReadOnlyField()
+    avg_rating = serializers.ReadOnlyField()
+    review_count = serializers.ReadOnlyField()
+
+    class Meta:
+        model = Product
+        fields = (
+            'id', 'name', 'slug', 'brand_name', 'category_name',
+            'price', 'original_price', 'delivery_charge', 'discount', 'in_stock',
+            'avg_rating', 'review_count', 'badge', 'primary_image',
+            'is_featured', 'is_new_arrival', 'is_best_seller',
+        )
+
+    def get_primary_image(self, obj):
+        img = obj.images.filter(is_primary=True).first() or obj.images.first()
+        if not img:
+            return None
+        url = img.image.url
+        if url.startswith('http'):
+            return url
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(url)
+        return f"http://127.0.0.1:8000{url}"
+
+    def get_delivery_charge(self, obj):
+        return obj.effective_delivery_charge

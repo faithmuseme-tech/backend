@@ -1,0 +1,124 @@
+from rest_framework import serializers
+from .models import Order, OrderItem
+
+
+CENTRAL = {"buikwe","bukomansimbi","butambala","buvuma","gomba","kalangala","kalungu","kampala","kassanda","kayunga","kiboga","kyankwanzi","kyotera","luwero","lwengo","lyantonde","masaka","mityana","mpigi","mubende","mukono","nakaseke","nakasongola","rakai","sembabule","wakiso"}
+EASTERN = {"amuria","budaka","bududa","bugiri","bugweri","bukedea","bukwa","bulambuli","busia","butaleja","butebo","buyende","iganga","jinja","kaberamaido","kaliro","kamuli","kapchorwa","katakwi","kibuku","kumi","kween","luuka","manafwa","mayuge","mbale","namayingo","namisindwa","namutumba","ngora","pallisa","serere","sironko","soroti","tororo"}
+
+def calculate_delivery_fee(city, items=None, item_count=None, subtotal=None):
+    d = city.strip().lower() if city else ""
+    if not d:
+        return 0
+
+    if d in CENTRAL:
+        fee = 3000
+    elif d in EASTERN:
+        fee = 5000
+    else:
+        fee = 8000  # Northern & Western
+
+    if items is None:
+        return fee * max(int(item_count or 1), 1)
+
+    if hasattr(items, 'all'):
+        items = items.all()
+
+    total_quantity = 0
+    for item in items:
+        if isinstance(item, dict):
+            total_quantity += int(item.get('quantity', 1) or 1)
+        else:
+            total_quantity += getattr(item, 'quantity', 1)
+
+    return fee * total_quantity
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    subtotal = serializers.ReadOnlyField()
+    product_image = serializers.SerializerMethodField()
+    trader_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderItem
+        fields = ('id', 'product', 'product_name', 'product_price', 'quantity', 'subtotal', 'product_image', 'trader_name')
+
+    def get_product_image(self, obj):
+        if not obj.product:
+            return None
+        img = obj.product.images.filter(is_primary=True).first() or obj.product.images.first()
+        if not img:
+            return None
+        url = img.image.url
+        if url.startswith('http'):
+            return url
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(url)
+        return f"http://127.0.0.1:8000{url}"
+
+    def get_trader_name(self, obj):
+        if not obj.product or not obj.product.seller:
+            return None
+        seller = obj.product.seller
+        if hasattr(seller, 'trader_profile'):
+            return seller.trader_profile.business_name
+        return seller.get_full_name() or seller.email
+
+
+class OrderCustomerSerializer(serializers.Serializer):
+    id         = serializers.IntegerField()
+    full_name  = serializers.SerializerMethodField()
+    email      = serializers.EmailField()
+    phone      = serializers.CharField()
+
+    def get_full_name(self, obj):
+        return obj.get_full_name() or obj.username
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    items    = OrderItemSerializer(many=True, read_only=True)
+    customer = serializers.SerializerMethodField()
+    is_paid  = serializers.SerializerMethodField()
+    delivery_fee = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = (
+            'id', 'order_number', 'user_crud_number', 'status',
+            'shipping_address', 'shipping_city', 'shipping_country',
+            'shipping_zip', 'total_price', 'notes', 'items',
+            'created_at', 'updated_at',
+            'customer', 'is_paid', 'delivery_fee',
+        )
+        read_only_fields = ('id', 'order_number', 'user_crud_number', 'status', 'created_at', 'updated_at')
+
+    def get_customer(self, obj):
+        u = obj.user
+        return {
+            'id':        u.id,
+            'full_name': u.get_full_name() or u.username,
+            'email':     u.email,
+            'phone':     u.phone or '—',
+        }
+
+    def get_is_paid(self, obj):
+        return obj.status not in ('pending', 'cancelled', 'refunded')
+
+    def get_delivery_fee(self, obj):
+        return calculate_delivery_fee(obj.shipping_city, obj.items.all())
+
+
+class OrderItemInputSerializer(serializers.Serializer):
+    product_id = serializers.IntegerField(required=False, allow_null=True)
+    product_name = serializers.CharField()
+    product_price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class CreateOrderSerializer(serializers.Serializer):
+    shipping_address = serializers.CharField(required=False, allow_blank=True)
+    shipping_city = serializers.CharField(required=False, allow_blank=True)
+    shipping_country = serializers.CharField(required=False, allow_blank=True)
+    shipping_zip = serializers.CharField(required=False, allow_blank=True)
+    notes = serializers.CharField(required=False, allow_blank=True)
+    items = OrderItemInputSerializer(many=True, required=False)
