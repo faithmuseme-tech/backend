@@ -71,10 +71,8 @@ class ProductListSerializer(serializers.ModelSerializer):
     delivery_charge = serializers.SerializerMethodField()
     category_name = serializers.CharField(source='category.name', read_only=True)
     primary_image = serializers.SerializerMethodField()
-    discount = serializers.ReadOnlyField()
-    in_stock = serializers.ReadOnlyField()
-    avg_rating = serializers.ReadOnlyField()
-    review_count = serializers.ReadOnlyField()
+    avg_rating = serializers.SerializerMethodField()
+    review_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -84,6 +82,17 @@ class ProductListSerializer(serializers.ModelSerializer):
             'avg_rating', 'review_count', 'badge', 'primary_image',
             'is_featured', 'is_new_arrival', 'is_best_seller',
         )
+
+    def get_avg_rating(self, obj):
+        # Use annotated value if present (avoids extra DB query), else fall back to property
+        val = getattr(obj, '_avg_rating', None)
+        if val is None:
+            val = obj.avg_rating
+        return round(val, 1) if val else 0
+
+    def get_review_count(self, obj):
+        val = getattr(obj, '_review_count', None)
+        return val if val is not None else obj.review_count
 
     def get_primary_image(self, obj):
         img = obj.images.filter(is_primary=True).first() or obj.images.first()

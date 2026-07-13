@@ -5,8 +5,11 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import MultiPartParser, FormParser
-from django.db.models import Q
+from django.db.models import Q, Avg, Count, OuterRef, Subquery
 from django.utils.text import slugify
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_headers
 from .models import Product, ProductImage
 from .serializers import ProductSerializer, ProductListSerializer, ProductImageSerializer
 
@@ -20,6 +23,25 @@ def is_approved_trader(user):
     )
 
 
+def annotated_product_qs():
+    """Base queryset with avg_rating and review_count annotated in SQL — eliminates N+1."""
+    return (
+        Product.objects
+        .filter(is_active=True)
+        .select_related('brand', 'category')
+        .prefetch_related('images')
+        .annotate(
+            _avg_rating=Avg('reviews__rating'),
+            _review_count=Count('reviews'),
+        )
+    )
+
+
+# Cache 5 min for public unauthenticated list views
+CACHE_5M  = 60 * 5
+CACHE_10M = 60 * 10
+
+
 class ProductListView(generics.ListAPIView):
     serializer_class = ProductListSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -28,65 +50,71 @@ class ProductListView(generics.ListAPIView):
     ordering = ['-created_at']
 
     def get_queryset(self):
-        qs = Product.objects.filter(is_active=True).select_related('brand', 'category').prefetch_related('images', 'reviews')
-        category = self.request.query_params.get('category')
-        brand = self.request.query_params.get('brand')
+        qs = annotated_product_qs()
+        category  = self.request.query_params.get('category')
+        brand     = self.request.query_params.get('brand')
         min_price = self.request.query_params.get('min_price')
         max_price = self.request.query_params.get('max_price')
-        in_stock = self.request.query_params.get('in_stock')
+        in_stock  = self.request.query_params.get('in_stock')
 
-        if category:
-            qs = qs.filter(category__slug=category)
-        if brand:
-            qs = qs.filter(brand__slug=brand)
-        if min_price:
-            qs = qs.filter(price__gte=min_price)
-        if max_price:
-            qs = qs.filter(price__lte=max_price)
-        if in_stock == 'true':
-            qs = qs.filter(stock__gt=0)
+        if category:  qs = qs.filter(category__slug=category)
+        if brand:     qs = qs.filter(brand__slug=brand)
+        if min_price: qs = qs.filter(price__gte=min_price)
+        if max_price: qs = qs.filter(price__lte=max_price)
+        if in_stock == 'true': qs = qs.filter(stock__gt=0)
         return qs
 
 
 class ProductDetailView(generics.RetrieveAPIView):
-    queryset = Product.objects.filter(is_active=True).select_related('brand', 'category').prefetch_related('images', 'reviews')
     serializer_class = ProductSerializer
+
+    def get_queryset(self):
+        return (
+            Product.objects
+            .filter(is_active=True)
+            .select_related('brand', 'category')
+            .prefetch_related('images', 'reviews__user')
+            .annotate(_avg_rating=Avg('reviews__rating'), _review_count=Count('reviews'))
+        )
 
     def get_object(self):
         lookup = self.kwargs.get('slug')
         qs = self.get_queryset()
-        # support both numeric ID and slug
         if str(lookup).isdigit():
             return generics.get_object_or_404(qs, pk=lookup)
         return generics.get_object_or_404(qs, slug=lookup)
 
 
+@method_decorator(cache_page(CACHE_10M), name='list')
 class FeaturedProductsView(generics.ListAPIView):
     serializer_class = ProductListSerializer
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True, is_featured=True).select_related('brand', 'category').prefetch_related('images', 'reviews')[:12]
+        return annotated_product_qs().filter(is_featured=True)[:12]
 
 
+@method_decorator(cache_page(CACHE_10M), name='list')
 class NewArrivalsView(generics.ListAPIView):
     serializer_class = ProductListSerializer
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True, is_new_arrival=True).select_related('brand', 'category').prefetch_related('images', 'reviews')[:12]
+        return annotated_product_qs().filter(is_new_arrival=True)[:12]
 
 
+@method_decorator(cache_page(CACHE_10M), name='list')
 class BestSellersView(generics.ListAPIView):
     serializer_class = ProductListSerializer
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True, is_best_seller=True).select_related('brand', 'category').prefetch_related('images', 'reviews')[:12]
+        return annotated_product_qs().filter(is_best_seller=True)[:12]
 
 
+@method_decorator(cache_page(CACHE_5M), name='list')
 class FlashDealsView(generics.ListAPIView):
     serializer_class = ProductListSerializer
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True, original_price__isnull=False).select_related('brand', 'category').prefetch_related('images', 'reviews').order_by('-created_at')[:8]
+        return annotated_product_qs().filter(original_price__isnull=False).order_by('-created_at')[:8]
 
 
 class SearchView(generics.ListAPIView):
@@ -97,9 +125,7 @@ class SearchView(generics.ListAPIView):
         if not q:
             return Product.objects.none()
 
-        base_qs = Product.objects.filter(is_active=True).select_related('brand', 'category').prefetch_related('images', 'reviews')
-
-        # Build a broad OR filter across all tokens and all fields
+        base_qs = annotated_product_qs()
         tokens = [t for t in q.split() if t]
         combined = Q()
         for token in tokens:
@@ -111,7 +137,6 @@ class SearchView(generics.ListAPIView):
                 Q(badge__icontains=token) |
                 Q(sku__icontains=token)
             )
-        # Also match the full phrase
         combined |= (
             Q(name__icontains=q) |
             Q(description__icontains=q) |
@@ -120,18 +145,16 @@ class SearchView(generics.ListAPIView):
         )
 
         direct_hits = base_qs.filter(combined)
-
-        # Expand: pull in same-category products of direct hits
         hit_category_ids = direct_hits.values_list('category_id', flat=True).distinct()
         category_related = base_qs.filter(category_id__in=hit_category_ids).exclude(
             id__in=direct_hits.values_list('id', flat=True)
         )
 
-        # Combine: direct hits first, then category-related
         from itertools import chain
         return list(chain(direct_hits, category_related))
 
 
+@method_decorator(cache_page(CACHE_5M), name='list')
 class RelatedProductsView(generics.ListAPIView):
     serializer_class = ProductListSerializer
 
@@ -142,25 +165,17 @@ class RelatedProductsView(generics.ListAPIView):
         except Product.DoesNotExist:
             return Product.objects.none()
 
-        qs = (
-            Product.objects
-            .filter(is_active=True)
-            .exclude(slug=slug)
-            .select_related("brand", "category")
-            .prefetch_related("images", "reviews")
-        )
-
+        qs = annotated_product_qs().exclude(slug=slug)
         same_category = list(qs.filter(category=product.category)[:4])
         if len(same_category) >= 4:
             return same_category
-
         same_brand = list(
             qs.filter(brand=product.brand).exclude(category=product.category)[:4 - len(same_category)]
         )
         return same_category + same_brand
 
 
-# ── Trader Product Views ───────────────────────────────────────────────────────
+# \u2500\u2500 Trader Product Views \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 class TraderProductListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
@@ -170,14 +185,19 @@ class TraderProductListCreateView(generics.ListCreateAPIView):
         return ProductSerializer if self.request.method == 'POST' else ProductListSerializer
 
     def get_queryset(self):
-        return Product.objects.filter(seller=self.request.user).select_related('brand', 'category').prefetch_related('images', 'reviews')
+        return (
+            Product.objects
+            .filter(seller=self.request.user)
+            .select_related('brand', 'category')
+            .prefetch_related('images')
+            .annotate(_avg_rating=Avg('reviews__rating'), _review_count=Count('reviews'))
+        )
 
     def perform_create(self, serializer):
         if not is_approved_trader(self.request.user):
             raise PermissionDenied('Your trader account is not approved yet.')
         uid = str(uuid.uuid4())[:8]
         slug = slugify(self.request.data.get('name', uid)) + '-' + uid
-        # ensure slug uniqueness
         while Product.objects.filter(slug=slug).exists():
             slug = slugify(self.request.data.get('name', uid)) + '-' + str(uuid.uuid4())[:8]
         serializer.save(seller=self.request.user, slug=slug)
@@ -193,7 +213,6 @@ class TraderProductDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_update(self, serializer):
         name = self.request.data.get('name', serializer.instance.name)
-        # only regenerate slug if name actually changed
         if name != serializer.instance.name:
             uid = str(uuid.uuid4())[:8]
             new_slug = slugify(name) + '-' + uid

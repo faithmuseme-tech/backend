@@ -3,6 +3,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticatedOrReadOnly, AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from .models import Review
 from .serializers import ReviewSerializer
 from orders.models import Order
@@ -82,10 +84,17 @@ class CanReviewView(APIView):
         })
 
 
+@method_decorator(cache_page(60 * 10), name='list')
 class RecentReviewsView(generics.ListAPIView):
     serializer_class = ReviewSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
         limit = int(self.request.query_params.get('limit', 8))
-        return Review.objects.select_related('user', 'product').filter(rating__gte=4).order_by('-created_at')[:limit]
+        return (
+            Review.objects
+            .select_related('user', 'product')
+            .prefetch_related('product__images')
+            .filter(rating__gte=4)
+            .order_by('-created_at')[:limit]
+        )
