@@ -97,13 +97,21 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.User'
 
-# ── Cache (DB-backed, zero extra infra) ───────────────────────────────────────
+# ── Cache (Redis) ────────────────────────────────────────────────────────────
+REDIS_URL = config('REDIS_URL', default='redis://127.0.0.1:6379/0')
+
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-        'LOCATION': 'app_cache',
-        'TIMEOUT': 300,  # 5 minutes default
-        'OPTIONS': {'MAX_ENTRIES': 1000},
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': REDIS_URL,
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'IGNORE_EXCEPTIONS': True,  # degrade gracefully if Redis is down
+        },
+        'TIMEOUT': 300,
+        'KEY_PREFIX': 'codetech',
     }
 }
 
