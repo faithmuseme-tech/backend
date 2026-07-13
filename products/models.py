@@ -50,10 +50,9 @@ class Product(models.Model):
 
     @property
     def avg_rating(self):
-        reviews = self.reviews.all()
-        if not reviews:
-            return 0
-        return round(sum(r.rating for r in reviews) / len(reviews), 1)
+        from django.db.models import Avg
+        result = self.reviews.aggregate(avg=Avg('rating'))['avg']
+        return round(result, 1) if result else 0
 
     @property
     def review_count(self):
