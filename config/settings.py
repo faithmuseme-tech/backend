@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     'wishlist',
     'adminpanel',
     'notifications',
+    'flashdeals',
 ]
 
 MIDDLEWARE = [
