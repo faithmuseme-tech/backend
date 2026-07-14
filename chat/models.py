@@ -31,9 +31,18 @@ class ChatRoom(models.Model):
 
 
 class ChatMessage(models.Model):
+    FILE_IMAGE   = 'image'
+    FILE_VIDEO   = 'video'
+    FILE_DOC     = 'doc'
+    FILE_CHOICES = [(FILE_IMAGE, 'Image'), (FILE_VIDEO, 'Video'), (FILE_DOC, 'Document')]
+
     room       = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='messages')
     sender     = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_messages')
-    body       = models.TextField()
+    reply_to   = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='replies')
+    body       = models.TextField(blank=True, default='')
+    file_url   = models.URLField(max_length=500, blank=True, default='')
+    file_type  = models.CharField(max_length=10, choices=FILE_CHOICES, blank=True, default='')
+    file_name  = models.CharField(max_length=255, blank=True, default='')
     is_read    = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -41,4 +50,4 @@ class ChatMessage(models.Model):
         ordering = ['created_at']
 
     def __str__(self):
-        return f"{self.sender.email}: {self.body[:40]}"
+        return f"{self.sender.email}: {self.body[:40] or self.file_name}"

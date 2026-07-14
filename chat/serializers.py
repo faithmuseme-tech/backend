@@ -5,13 +5,27 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 
-class ChatMessageSerializer(serializers.ModelSerializer):
-    sender_name  = serializers.SerializerMethodField()
-    is_admin_msg = serializers.SerializerMethodField()
+class ReplySnippetSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
 
     class Meta:
         model  = ChatMessage
-        fields = ('id', 'body', 'sender', 'sender_name', 'is_admin_msg', 'is_read', 'created_at')
+        fields = ('id', 'body', 'file_type', 'file_name', 'sender_name')
+
+    def get_sender_name(self, obj):
+        return obj.sender.first_name or obj.sender.email.split('@')[0]
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    sender_name  = serializers.SerializerMethodField()
+    is_admin_msg = serializers.SerializerMethodField()
+    reply_to     = ReplySnippetSerializer(read_only=True)
+
+    class Meta:
+        model  = ChatMessage
+        fields = ('id', 'body', 'file_url', 'file_type', 'file_name',
+                  'sender', 'sender_name', 'is_admin_msg', 'is_read',
+                  'reply_to', 'created_at')
 
     def get_sender_name(self, obj):
         return obj.sender.first_name or obj.sender.email.split('@')[0]
