@@ -3,7 +3,7 @@ from .views import (
     ProductListView, ProductDetailView, FeaturedProductsView,
     NewArrivalsView, BestSellersView, FlashDealsView, SearchView,
     RelatedProductsView, TraderProductListCreateView,
-    TraderProductDetailView, TraderProductImageView,
+    TraderProductDetailView, TraderProductImageView, ProductShareView,
 )
 
 urlpatterns = [
@@ -13,6 +13,7 @@ urlpatterns = [
     path('best-sellers/', BestSellersView.as_view(), name='best_sellers'),
     path('flash-deals/', FlashDealsView.as_view(), name='flash_deals'),
     path('search/', SearchView.as_view(), name='product_search'),
+    path('share/<slug:slug>/', ProductShareView.as_view(), name='product_share'),
     # Trader product management
     path('trader/', TraderProductListCreateView.as_view(), name='trader_products'),
     path('trader/<int:pk>/', TraderProductDetailView.as_view(), name='trader_product_detail'),
