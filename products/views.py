@@ -42,6 +42,12 @@ CACHE_5M  = 60 * 5
 CACHE_10M = 60 * 10
 
 
+def clear_product_caches():
+    """Clear all product list caches so deletions appear immediately."""
+    from django.core.cache import cache
+    cache.clear()
+
+
 class ProductListView(generics.ListAPIView):
     serializer_class = ProductListSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -221,6 +227,10 @@ class TraderProductDetailView(generics.RetrieveUpdateDestroyAPIView):
             serializer.save(slug=new_slug)
         else:
             serializer.save()
+
+    def perform_destroy(self, instance):
+        instance.delete()
+        clear_product_caches()
 
 
 class TraderProductImageView(APIView):
