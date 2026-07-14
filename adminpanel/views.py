@@ -174,3 +174,20 @@ class AdminProductToggleView(APIView):
         product.is_active = not product.is_active
         product.save()
         return Response({'id': product.id, 'is_active': product.is_active})
+
+
+class AdminResetPasswordView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found.'}, status=status.HTTP_404_NOT_FOUND)
+        new_password = request.data.get('new_password', '').strip()
+        if len(new_password) < 6:
+            return Response({'error': 'Password must be at least 6 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(new_password)
+        user.save()
+        return Response({'message': f'Password reset for {user.email}.'})
+
