@@ -17,4 +17,5 @@ urlpatterns = [
     path('api/v1/notifications/', include('notifications.urls')),
     path('api/v1/flash-deals/', include('flashdeals.urls')),
     path('api/v1/admin/', include('adminpanel.urls')),
+    path('api/v1/chat/', include('chat.urls')),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
