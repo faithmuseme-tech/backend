@@ -119,10 +119,7 @@ if REDIS_URL:
 else:
     CACHES = {
         'default': {
-            'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-            'LOCATION': 'app_cache',
-            'TIMEOUT': 300,
-            'OPTIONS': {'MAX_ENTRIES': 1000},
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         }
     }
 
