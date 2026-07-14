@@ -183,6 +183,66 @@ class RelatedProductsView(generics.ListAPIView):
 
 # \u2500\u2500 Trader Product Views \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
+class ProductShareView(APIView):
+    """Returns an HTML page with OG meta tags for social sharing, then redirects to the frontend."""
+    permission_classes = []
+    authentication_classes = []
+
+    def get(self, request, slug):
+        from django.http import HttpResponse
+        FRONTEND = 'https://faithmuseme-tech.github.io/frontend'
+        try:
+            product = (
+                Product.objects
+                .filter(slug=slug, is_active=True)
+                .prefetch_related('images')
+                .select_related('brand', 'category')
+                .get()
+            )
+        except Product.DoesNotExist:
+            from django.http import HttpResponseRedirect
+            return HttpResponseRedirect(FRONTEND)
+
+        img = product.images.filter(is_primary=True).first() or product.images.first()
+        img_url = ''
+        if img:
+            url = img.image.url
+            img_url = url if url.startswith('http') else request.build_absolute_uri(url)
+
+        price = f"UGX {product.price:,.0f}" if product.price else ''
+        title = f"{product.name} — {price}"
+        desc  = (product.description or f"Buy {product.name} at {price} on PrimeAisle.")[:200]
+        page_url = f"{FRONTEND}/product/{slug}"
+        fallback_img = f"{FRONTEND}/logo512.png"
+        og_image = img_url or fallback_img
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{title}</title>
+  <meta property="og:type"        content="product">
+  <meta property="og:site_name"   content="PrimeAisle">
+  <meta property="og:title"       content="{title}">
+  <meta property="og:description" content="{desc}">
+  <meta property="og:image"       content="{og_image}">
+  <meta property="og:image:width" content="800">
+  <meta property="og:image:height" content="800">
+  <meta property="og:url"         content="{page_url}">
+  <meta name="twitter:card"        content="summary_large_image">
+  <meta name="twitter:title"       content="{title}">
+  <meta name="twitter:description" content="{desc}">
+  <meta name="twitter:image"       content="{og_image}">
+  <meta http-equiv="refresh" content="0;url={page_url}">
+  <script>window.location.replace("{page_url}");</script>
+</head>
+<body>
+  <p>Redirecting to <a href="{page_url}">{title}</a>...</p>
+</body>
+</html>"""
+        return HttpResponse(html, content_type='text/html')
+
+
 class TraderProductListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
