@@ -65,17 +65,34 @@ class AdminTraderApproveView(APIView):
 
     def post(self, request, pk):
         try:
-            profile = TraderProfile.objects.get(pk=pk)
+            profile = TraderProfile.objects.select_related('user').get(pk=pk)
         except TraderProfile.DoesNotExist:
             return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         action = request.data.get('action')
         if action == 'approve':
             profile.status = TraderProfile.STATUS_APPROVED
+            profile.user.is_active = True
+            profile.user.save(update_fields=['is_active'])
+            profile.save()
         elif action == 'reject':
             profile.status = TraderProfile.STATUS_REJECTED
+            profile.save()
+        elif action == 'deactivate':
+            profile.status = TraderProfile.STATUS_REJECTED
+            profile.user.is_active = False
+            profile.user.save(update_fields=['is_active'])
+            profile.save()
+        elif action == 'ban':
+            profile.status = TraderProfile.STATUS_REJECTED
+            profile.user.is_active = False
+            profile.user.is_trader = False
+            profile.user.save(update_fields=['is_active', 'is_trader'])
+            profile.save()
+        elif action == 'delete':
+            profile.user.delete()  # cascades to profile
+            return Response(status=status.HTTP_204_NO_CONTENT)
         else:
-            return Response({'error': 'Invalid action. Use approve or reject.'}, status=status.HTTP_400_BAD_REQUEST)
-        profile.save()
+            return Response({'error': 'Invalid action.'}, status=status.HTTP_400_BAD_REQUEST)
         return Response(TraderProfileSerializer(profile).data)
 
 
