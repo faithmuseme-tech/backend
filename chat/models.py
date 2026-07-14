@@ -44,6 +44,8 @@ class ChatMessage(models.Model):
     file_type  = models.CharField(max_length=10, choices=FILE_CHOICES, blank=True, default='')
     file_name  = models.CharField(max_length=255, blank=True, default='')
     is_read    = models.BooleanField(default=False)
+    is_edited  = models.BooleanField(default=False)
+    is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

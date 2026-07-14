@@ -20,13 +20,10 @@ def is_admin(user):
 
 
 def _upload_to_cloudinary(file):
-    """Upload file to Cloudinary and return (url, file_type, file_name)."""
     name = file.name.lower()
     mime = getattr(file, 'content_type', '')
-
     if file.size > MAX_FILE_MB * 1024 * 1024:
         raise ValueError(f'File exceeds {MAX_FILE_MB} MB limit.')
-
     if mime.startswith('image/'):
         resource_type, ftype = 'image', 'image'
     elif mime.startswith('video/'):
@@ -35,18 +32,12 @@ def _upload_to_cloudinary(file):
         resource_type, ftype = 'raw', 'doc'
     else:
         raise ValueError('Unsupported file type.')
-
     result = cloudinary.uploader.upload(
-        file,
-        folder='chat_attachments',
-        resource_type=resource_type,
-        use_filename=True,
-        unique_filename=True,
+        file, folder='chat_attachments',
+        resource_type=resource_type, use_filename=True, unique_filename=True,
     )
     return result['secure_url'], ftype, file.name
 
-
-# ── User: get or create own room, send message, fetch messages ────────────────
 
 class MyRoomView(APIView):
     permission_classes = [IsAuthenticated]
@@ -55,35 +46,28 @@ class MyRoomView(APIView):
     def get(self, request):
         role = 'trader' if getattr(request.user, 'is_trader', False) else 'customer'
         room, _ = ChatRoom.objects.get_or_create(user=request.user, defaults={'role': role})
-        # Mark admin messages as read when user opens chat
         room.messages.exclude(sender=request.user).filter(is_read=False).update(is_read=True)
         messages = room.messages.select_related('sender').all()
-        return Response({
-            'room_id': room.id,
-            'messages': ChatMessageSerializer(messages, many=True).data,
-        })
+        return Response({'room_id': room.id, 'messages': ChatMessageSerializer(messages, many=True).data})
 
     def post(self, request):
         body = request.data.get('body', '').strip()
         file = request.FILES.get('file')
         if not body and not file:
             return Response({'error': 'Message or file required.'}, status=status.HTTP_400_BAD_REQUEST)
-
         file_url = file_type = file_name = ''
         if file:
             try:
                 file_url, file_type, file_name = _upload_to_cloudinary(file)
             except ValueError as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        reply_to_id = request.data.get('reply_to')
         reply_to_msg = None
+        reply_to_id = request.data.get('reply_to')
         if reply_to_id:
             try:
                 reply_to_msg = ChatMessage.objects.get(id=reply_to_id)
             except ChatMessage.DoesNotExist:
                 pass
-
         role = 'trader' if getattr(request.user, 'is_trader', False) else 'customer'
         room, _ = ChatRoom.objects.get_or_create(user=request.user, defaults={'role': role})
         msg = ChatMessage.objects.create(
@@ -95,8 +79,49 @@ class MyRoomView(APIView):
         return Response(ChatMessageSerializer(msg).data, status=status.HTTP_201_CREATED)
 
 
+class MessageDetailView(APIView):
+    """Edit or delete a single message (owner only)."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, msg_id):
+        try:
+            msg = ChatMessage.objects.get(id=msg_id, sender=request.user)
+        except ChatMessage.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        new_body = request.data.get('body', '').strip()
+        if not new_body:
+            return Response({'error': 'Body required.'}, status=status.HTTP_400_BAD_REQUEST)
+        msg.body = new_body
+        msg.is_edited = True
+        msg.save(update_fields=['body', 'is_edited'])
+        return Response(ChatMessageSerializer(msg).data)
+
+    def delete(self, request, msg_id):
+        try:
+            msg = ChatMessage.objects.get(id=msg_id, sender=request.user)
+        except ChatMessage.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        msg.body = ''
+        msg.file_url = msg.file_type = msg.file_name = ''
+        msg.is_deleted = True
+        msg.save(update_fields=['body', 'file_url', 'file_type', 'file_name', 'is_deleted'])
+        return Response(ChatMessageSerializer(msg).data)
+
+
+class MessageBulkDeleteView(APIView):
+    """Delete multiple messages at once (owner only)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        ids = request.data.get('ids', [])
+        if not ids:
+            return Response({'error': 'ids required.'}, status=status.HTTP_400_BAD_REQUEST)
+        msgs = ChatMessage.objects.filter(id__in=ids, sender=request.user)
+        msgs.update(body='', file_url='', file_type='', file_name='', is_deleted=True)
+        return Response({'deleted': list(msgs.values_list('id', flat=True))})
+
+
 class MyRoomUnreadView(APIView):
-    """Lightweight poll endpoint — returns unread count for the user."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
@@ -107,8 +132,6 @@ class MyRoomUnreadView(APIView):
             count = 0
         return Response({'count': count})
 
-
-# ── Admin: list all rooms, open a room, reply ─────────────────────────────────
 
 class AdminRoomListView(APIView):
     permission_classes = [IsAuthenticated]
@@ -131,13 +154,9 @@ class AdminRoomDetailView(APIView):
             room = ChatRoom.objects.get(id=room_id)
         except ChatRoom.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        # Mark user messages as read when admin opens
         room.messages.filter(sender=room.user, is_read=False).update(is_read=True)
         messages = room.messages.select_related('sender').all()
-        return Response({
-            'room': ChatRoomSerializer(room).data,
-            'messages': ChatMessageSerializer(messages, many=True).data,
-        })
+        return Response({'room': ChatRoomSerializer(room).data, 'messages': ChatMessageSerializer(messages, many=True).data})
 
     def post(self, request, room_id):
         if not is_admin(request.user):
@@ -150,22 +169,19 @@ class AdminRoomDetailView(APIView):
             room = ChatRoom.objects.get(id=room_id)
         except ChatRoom.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
-
         file_url = file_type = file_name = ''
         if file:
             try:
                 file_url, file_type, file_name = _upload_to_cloudinary(file)
             except ValueError as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        reply_to_id = request.data.get('reply_to')
         reply_to_msg = None
+        reply_to_id = request.data.get('reply_to')
         if reply_to_id:
             try:
                 reply_to_msg = ChatMessage.objects.get(id=reply_to_id)
             except ChatMessage.DoesNotExist:
                 pass
-
         msg = ChatMessage.objects.create(
             room=room, sender=request.user,
             body=body, file_url=file_url, file_type=file_type, file_name=file_name,
@@ -176,14 +192,12 @@ class AdminRoomDetailView(APIView):
 
 
 class AdminUnreadTotalView(APIView):
-    """Total unread messages across all rooms for admin badge."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         if not is_admin(request.user):
             return Response(status=status.HTTP_403_FORBIDDEN)
         total = ChatMessage.objects.filter(
-            room__user__isnull=False,
-            is_read=False
+            room__user__isnull=False, is_read=False
         ).exclude(sender__is_staff=True).exclude(sender__is_admin=True).count()
         return Response({'count': total})

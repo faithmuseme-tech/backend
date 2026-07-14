@@ -25,7 +25,7 @@ class ChatMessageSerializer(serializers.ModelSerializer):
         model  = ChatMessage
         fields = ('id', 'body', 'file_url', 'file_type', 'file_name',
                   'sender', 'sender_name', 'is_admin_msg', 'is_read',
-                  'reply_to', 'created_at')
+                  'is_edited', 'is_deleted', 'reply_to', 'created_at')
 
     def get_sender_name(self, obj):
         return obj.sender.first_name or obj.sender.email.split('@')[0]
