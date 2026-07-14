@@ -4,8 +4,6 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.exceptions import PermissionDenied
 from django.utils import timezone
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
 from .models import FlashDeal
 from .serializers import FlashDealSerializer
 
@@ -19,7 +17,6 @@ def is_approved_trader(user):
     )
 
 
-@method_decorator(cache_page(60 * 2), name='list')   # cache 2 min — countdown needs to be fresh
 class FlashDealListView(generics.ListAPIView):
     serializer_class = FlashDealSerializer
     permission_classes = [AllowAny]
@@ -40,12 +37,16 @@ class TraderFlashDealListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return FlashDeal.objects.filter(created_by=self.request.user).select_related('product')
+        return (
+            FlashDeal.objects
+            .filter(created_by=self.request.user)
+            .select_related('product__brand', 'product__category')
+            .prefetch_related('product__images')
+        )
 
     def perform_create(self, serializer):
         if not is_approved_trader(self.request.user):
             raise PermissionDenied('Your trader account is not approved yet.')
-        # ensure the product belongs to this trader
         product = serializer.validated_data.get('product')
         if product.seller != self.request.user:
             raise PermissionDenied('You can only create flash deals for your own products.')
