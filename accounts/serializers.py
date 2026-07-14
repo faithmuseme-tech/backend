@@ -25,14 +25,23 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class TraderProfileSerializer(serializers.ModelSerializer):
+    user_email      = serializers.EmailField(source='user.email', read_only=True)
+    user_name       = serializers.SerializerMethodField()
+    user_phone      = serializers.CharField(source='user.phone', read_only=True)
+    user_is_active  = serializers.BooleanField(source='user.is_active', read_only=True)
+
     class Meta:
         model = TraderProfile
         fields = (
             'id', 'business_name', 'business_email', 'business_phone',
             'business_address', 'business_city', 'business_country',
             'description', 'logo', 'status', 'is_approved', 'created_at',
+            'user_email', 'user_name', 'user_phone', 'user_is_active',
         )
         read_only_fields = ('id', 'status', 'is_approved', 'created_at')
+
+    def get_user_name(self, obj):
+        return f"{obj.user.first_name} {obj.user.last_name}".strip() or obj.user.username
 
 
 class UserSerializer(serializers.ModelSerializer):
