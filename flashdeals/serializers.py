@@ -23,8 +23,10 @@ class FlashDealSerializer(serializers.ModelSerializer):
     def validate(self, data):
         product = data.get('product')
         deal_price = data.get('deal_price')
-        if product and deal_price and deal_price >= product.price:
-            raise serializers.ValidationError(
-                {'deal_price': 'Deal price must be lower than the product price.'}
-            )
+        if product and deal_price:
+            ref_price = product.price or product.original_price
+            if ref_price and deal_price >= ref_price:
+                raise serializers.ValidationError(
+                    {'deal_price': 'Deal price must be lower than the product price.'}
+                )
         return data

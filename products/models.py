@@ -22,7 +22,7 @@ class Product(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='products')
     description = models.TextField(blank=True)
     trader_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Price set by trader (before 10% platform commission)')
-    price = models.DecimalField(max_digits=10, decimal_places=2, help_text='Final price shown to customers (trader_price + 10%)')
+    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Final price shown to customers (trader_price + 10%)')
     original_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text='Delivery charge in UGX')
     stock = models.PositiveIntegerField(default=0)

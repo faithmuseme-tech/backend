@@ -41,6 +41,7 @@ class ProductSerializer(serializers.ModelSerializer):
     avg_rating = serializers.ReadOnlyField()
     review_count = serializers.ReadOnlyField()
     commission_amount = serializers.ReadOnlyField()
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, read_only=True)
 
     class Meta:
         model = Product
@@ -52,7 +53,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'images', 'discount', 'in_stock', 'avg_rating', 'review_count',
             'created_at',
         )
-        read_only_fields = ('slug', 'price')
+        read_only_fields = ('slug',)
 
     def get_delivery_charge(self, obj):
         return obj.effective_delivery_charge
