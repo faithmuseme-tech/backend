@@ -2,6 +2,7 @@ from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.db.models import Sum, Count, F
 from .models import Order, OrderItem
 from .serializers import OrderSerializer, CreateOrderSerializer, calculate_delivery_fee
 from cart.models import Cart
@@ -105,3 +106,42 @@ class CreateOrderView(APIView):
                 )
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+
+class TraderOrderListView(generics.ListAPIView):
+    """Orders containing at least one product belonging to the requesting trader."""
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return (
+            Order.objects
+            .filter(items__product__seller=self.request.user)
+            .distinct()
+            .prefetch_related('items__product__images')
+            .select_related('user')
+            .order_by('-created_at')
+        )
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), 'request': self.request}
+
+
+class TraderStatsView(APIView):
+    """Revenue and sales stats for the requesting trader."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        trader_items = OrderItem.objects.filter(product__seller=request.user)
+        revenue = trader_items.aggregate(
+            total=Sum(F('product_price') * F('quantity'))
+        )['total'] or 0
+        products_sold = trader_items.aggregate(total=Sum('quantity'))['total'] or 0
+        orders_count = (
+            Order.objects.filter(items__product__seller=request.user).distinct().count()
+        )
+        return Response({
+            'revenue': revenue,
+            'products_sold': products_sold,
+            'orders_count': orders_count,
+        })

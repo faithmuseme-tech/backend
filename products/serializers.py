@@ -40,17 +40,19 @@ class ProductSerializer(serializers.ModelSerializer):
     in_stock = serializers.ReadOnlyField()
     avg_rating = serializers.ReadOnlyField()
     review_count = serializers.ReadOnlyField()
+    commission_amount = serializers.ReadOnlyField()
 
     class Meta:
         model = Product
         fields = (
             'id', 'name', 'slug', 'brand', 'brand_id', 'category', 'category_id',
-            'description', 'price', 'original_price', 'delivery_charge', 'stock', 'sku',
+            'description', 'trader_price', 'price', 'original_price', 'delivery_charge',
+            'commission_amount', 'stock', 'sku',
             'is_active', 'is_featured', 'is_new_arrival', 'is_best_seller', 'badge', 'specs',
             'images', 'discount', 'in_stock', 'avg_rating', 'review_count',
             'created_at',
         )
-        read_only_fields = ('slug',)
+        read_only_fields = ('slug', 'price')
 
     def get_delivery_charge(self, obj):
         return obj.effective_delivery_charge
