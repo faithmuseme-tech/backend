@@ -10,6 +10,8 @@ from categories.models import Category
 class Product(models.Model):
     DEFAULT_DELIVERY_CHARGE = Decimal('5000.00')
 
+    COMMISSION_RATE = Decimal('0.10')
+
     seller = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='products'
@@ -19,7 +21,8 @@ class Product(models.Model):
     brand = models.ForeignKey(Brand, on_delete=models.SET_NULL, null=True, related_name='products')
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, related_name='products')
     description = models.TextField(blank=True)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    trader_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text='Price set by trader (before 10% platform commission)')
+    price = models.DecimalField(max_digits=10, decimal_places=2, help_text='Final price shown to customers (trader_price + 10%)')
     original_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0, help_text='Delivery charge in UGX')
     stock = models.PositiveIntegerField(default=0)
@@ -65,11 +68,20 @@ class Product(models.Model):
             return self.delivery_charge
         return self.DEFAULT_DELIVERY_CHARGE
 
+    @property
+    def commission_amount(self):
+        if self.trader_price:
+            return (self.trader_price * self.COMMISSION_RATE).quantize(Decimal('0.01'))
+        return Decimal('0.00')
+
     def save(self, *args, **kwargs):
         if not self.sku:
             self.sku = 'SKU-' + str(uuid.uuid4())[:8].upper()
         if self.delivery_charge is None or self.delivery_charge <= 0:
             self.delivery_charge = self.DEFAULT_DELIVERY_CHARGE
+        # Auto-calculate price from trader_price + 10% commission
+        if self.trader_price:
+            self.price = (self.trader_price * (1 + self.COMMISSION_RATE)).quantize(Decimal('0.01'))
         super().save(*args, **kwargs)
 
 
