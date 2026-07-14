@@ -44,7 +44,7 @@ class Product(models.Model):
 
     @property
     def discount(self):
-        if self.original_price and self.original_price > self.price:
+        if self.price and self.original_price and self.original_price > self.price:
             return round((1 - self.price / self.original_price) * 100)
         return 0
 
