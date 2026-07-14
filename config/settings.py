@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'adminpanel',
     'notifications',
     'flashdeals',
+    'chat',
 ]
 
 MIDDLEWARE = [
