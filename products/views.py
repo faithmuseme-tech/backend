@@ -181,6 +181,135 @@ class RelatedProductsView(generics.ListAPIView):
         return same_category + same_brand
 
 
+
+
+# ── Behavior Tracking & Recommendations ──────────────────────────────────────
+
+class TrackBehaviorView(APIView):
+    """POST {product_slug, seconds_spent} — stores a view event keyed by session/user."""
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request):
+        from .models import UserBehavior
+        slug = request.data.get('product_slug')
+        seconds = int(request.data.get('seconds_spent', 0))
+        if not slug or seconds < 2:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        try:
+            product = Product.objects.select_related('category', 'brand').get(slug=slug, is_active=True)
+        except Product.DoesNotExist:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # Use user id if authenticated, else session key, else IP
+        if request.user and request.user.is_authenticated:
+            key = f"user_{request.user.id}"
+        else:
+            key = request.session.session_key or request.META.get('REMOTE_ADDR', 'anon')
+
+        UserBehavior.objects.create(
+            session_key=key,
+            product=product,
+            category=product.category,
+            brand=product.brand,
+            seconds_spent=seconds,
+        )
+        # Keep only last 200 events per session to avoid unbounded growth
+        ids = list(
+            UserBehavior.objects.filter(session_key=key)
+            .order_by('-created_at')
+            .values_list('id', flat=True)[200:]
+        )
+        if ids:
+            UserBehavior.objects.filter(id__in=ids).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class RecommendedProductsView(generics.ListAPIView):
+    """Returns products personalised to the session/user browsing history."""
+    serializer_class = ProductListSerializer
+
+    def get_queryset(self):
+        from .models import UserBehavior
+        from django.db.models import Sum
+
+        request = self.request
+        if request.user and request.user.is_authenticated:
+            key = f"user_{request.user.id}"
+        else:
+            key = request.session.session_key or request.META.get('REMOTE_ADDR', 'anon')
+
+        # Aggregate time spent per category and brand from last 50 events
+        events = UserBehavior.objects.filter(session_key=key).order_by('-created_at')[:50]
+
+        cat_time = {}
+        brand_time = {}
+        seen_product_ids = set()
+        for e in events:
+            seen_product_ids.add(e.product_id)
+            if e.category_id:
+                cat_time[e.category_id] = cat_time.get(e.category_id, 0) + e.seconds_spent
+            if e.brand_id:
+                brand_time[e.brand_id] = brand_time.get(e.brand_id, 0) + e.seconds_spent
+
+        if not cat_time and not brand_time:
+            # No history — return latest products
+            return annotated_product_qs().order_by('-created_at')[:12]
+
+        top_cats = sorted(cat_time, key=cat_time.get, reverse=True)[:3]
+        top_brands = sorted(brand_time, key=brand_time.get, reverse=True)[:3]
+
+        qs = annotated_product_qs().exclude(id__in=seen_product_ids)
+        results = list(qs.filter(category_id__in=top_cats)[:8])
+        brand_ids_seen = {p.brand_id for p in results}
+        extra = list(
+            qs.filter(brand_id__in=top_brands)
+            .exclude(id__in=[p.id for p in results])[:max(0, 12 - len(results))]
+        )
+        combined = results + extra
+        if len(combined) < 8:
+            fallback = list(
+                annotated_product_qs()
+                .exclude(id__in=[p.id for p in combined] + list(seen_product_ids))
+                .order_by('-created_at')[:12 - len(combined)]
+            )
+            combined += fallback
+        return combined[:12]
+
+
+class DiverseNewArrivalsView(generics.ListAPIView):
+    """New arrivals guaranteed to mix categories and brands (max 2 per category/brand)."""
+    serializer_class = ProductListSerializer
+
+    def get_queryset(self):
+        qs = annotated_product_qs().filter(is_new_arrival=True).order_by('-created_at')
+        seen_cats = {}
+        seen_brands = {}
+        result = []
+        for p in qs[:60]:  # scan up to 60 to fill 12 diverse slots
+            cat_id = p.category_id
+            brand_id = p.brand_id
+            if seen_cats.get(cat_id, 0) >= 2:
+                continue
+            if seen_brands.get(brand_id, 0) >= 2:
+                continue
+            result.append(p)
+            seen_cats[cat_id] = seen_cats.get(cat_id, 0) + 1
+            seen_brands[brand_id] = seen_brands.get(brand_id, 0) + 1
+            if len(result) == 12:
+                break
+        # Pad with latest if not enough diverse new arrivals
+        if len(result) < 8:
+            existing_ids = {p.id for p in result}
+            extras = list(
+                annotated_product_qs()
+                .exclude(id__in=existing_ids)
+                .order_by('-created_at')[:12 - len(result)]
+            )
+            result += extras
+        return result
+
+
 # \u2500\u2500 Trader Product Views \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 class ProductShareView(APIView):
