@@ -377,7 +377,7 @@ class TraderProductListCreateView(generics.ListCreateAPIView):
     parser_classes = [MultiPartParser, FormParser]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'sku', 'category__name', 'brand__name']
-    pagination_class = None
+    pagination_class = None  # Return all trader's products unpaginated
 
     def get_serializer_class(self):
         return ProductSerializer if self.request.method == 'POST' else ProductListSerializer
