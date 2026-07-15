@@ -7,6 +7,19 @@ from brands.models import Brand
 from categories.models import Category
 
 
+class UserBehavior(models.Model):
+    """Tracks anonymous/authenticated product view events for recommendations."""
+    session_key = models.CharField(max_length=64, db_index=True)  # anonymous or user id
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, null=True, blank=True)
+    brand = models.ForeignKey(Brand, on_delete=models.CASCADE, null=True, blank=True)
+    product = models.ForeignKey('Product', on_delete=models.CASCADE, related_name='behavior_events')
+    seconds_spent = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
 class Product(models.Model):
     DEFAULT_DELIVERY_CHARGE = Decimal('5000.00')
 
