@@ -246,6 +246,9 @@ class ProductShareView(APIView):
 class TraderProductListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'sku', 'category__name', 'brand__name']
+    pagination_class = None
 
     def get_serializer_class(self):
         return ProductSerializer if self.request.method == 'POST' else ProductListSerializer
