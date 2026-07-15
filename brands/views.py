@@ -1,12 +1,20 @@
-from rest_framework import generics
-from rest_framework.permissions import AllowAny
+from rest_framework import generics, status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.db.models import Count, Q
 from django.utils.decorators import method_decorator
+from django.utils.text import slugify
 from django.views.decorators.cache import cache_page
 from .models import Brand
 from .serializers import BrandSerializer
 
 CACHE_10M = 60 * 10
+
+
+def is_admin(user):
+    return user.is_authenticated and (user.is_admin or user.is_staff)
 
 
 def brand_qs():
@@ -41,3 +49,64 @@ class BrandDetailView(generics.RetrieveAPIView):
 
     def get_serializer_context(self):
         return {**super().get_serializer_context(), 'request': self.request}
+
+
+# ── Admin Brand CRUD ───────────────────────────────────────────────────────────
+
+class AdminBrandListCreateView(generics.ListCreateAPIView):
+    serializer_class = BrandSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        return Brand.objects.annotate(
+            product_count=Count('products', filter=Q(products__is_active=True))
+        ).order_by('name')
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), 'request': self.request}
+
+    def perform_create(self, serializer):
+        if not is_admin(self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied()
+        name = self.request.data.get('name', '')
+        slug = slugify(name)
+        base, i = slug, 1
+        while Brand.objects.filter(slug=slug).exists():
+            slug = f"{base}-{i}"; i += 1
+        serializer.save(slug=slug)
+
+
+class AdminBrandDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = BrandSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        return Brand.objects.annotate(
+            product_count=Count('products', filter=Q(products__is_active=True))
+        )
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), 'request': self.request}
+
+    def perform_update(self, serializer):
+        if not is_admin(self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied()
+        name = self.request.data.get('name', serializer.instance.name)
+        if name != serializer.instance.name:
+            slug = slugify(name)
+            base, i = slug, 1
+            while Brand.objects.filter(slug=slug).exclude(pk=serializer.instance.pk).exists():
+                slug = f"{base}-{i}"; i += 1
+            serializer.save(slug=slug)
+        else:
+            serializer.save()
+
+    def perform_destroy(self, instance):
+        if not is_admin(self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied()
+        instance.delete()
