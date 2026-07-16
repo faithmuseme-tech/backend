@@ -4,13 +4,10 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Count, Q
-from django.utils.decorators import method_decorator
 from django.utils.text import slugify
-from django.views.decorators.cache import cache_page
+from django.core.cache import cache
 from .models import Brand
 from .serializers import BrandSerializer
-
-CACHE_10M = 60 * 10
 
 
 def is_admin(user):
@@ -27,7 +24,6 @@ def brand_qs():
     )
 
 
-@method_decorator(cache_page(CACHE_10M), name='list')
 class BrandListView(generics.ListAPIView):
     serializer_class = BrandSerializer
     permission_classes = [AllowAny]
@@ -76,6 +72,7 @@ class AdminBrandListCreateView(generics.ListCreateAPIView):
         while Brand.objects.filter(slug=slug).exists():
             slug = f"{base}-{i}"; i += 1
         serializer.save(slug=slug)
+        cache.clear()
 
 
 class AdminBrandDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -104,9 +101,11 @@ class AdminBrandDetailView(generics.RetrieveUpdateDestroyAPIView):
             serializer.save(slug=slug)
         else:
             serializer.save()
+        cache.clear()
 
     def perform_destroy(self, instance):
         if not is_admin(self.request.user):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied()
         instance.delete()
+        cache.clear()
