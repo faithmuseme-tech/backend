@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, F
 from .models import Order, OrderItem
-from .serializers import OrderSerializer, CreateOrderSerializer, calculate_delivery_fee
+from .serializers import OrderSerializer, CreateOrderSerializer, calculate_delivery_fee, get_zone_fee
 from cart.models import Cart
 from products.models import Product
 
