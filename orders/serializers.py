@@ -2,35 +2,55 @@ from rest_framework import serializers
 from .models import Order, OrderItem
 
 
-CENTRAL = {"buikwe","bukomansimbi","butambala","buvuma","gomba","kalangala","kalungu","kampala","kassanda","kayunga","kiboga","kyankwanzi","kyotera","luwero","lwengo","lyantonde","masaka","mityana","mpigi","mubende","mukono","nakaseke","nakasongola","rakai","sembabule","wakiso"}
-EASTERN = {"amuria","budaka","bududa","bugiri","bugweri","bukedea","bukwa","bulambuli","busia","butaleja","butebo","buyende","iganga","jinja","kaberamaido","kaliro","kamuli","kapchorwa","katakwi","kibuku","kumi","kween","luuka","manafwa","mayuge","mbale","namayingo","namisindwa","namutumba","ngora","pallisa","serere","sironko","soroti","tororo"}
+# District sets — used to determine delivery zone
+CENTRAL  = {"buikwe","bukomansimbi","butambala","buvuma","gomba","kalangala","kalungu",
+             "kampala","kassanda","kayunga","kiboga","kyankwanzi","kyotera","luwero",
+             "lwengo","lyantonde","masaka","mityana","mpigi","mubende","mukono",
+             "nakaseke","nakasongola","rakai","sembabule","wakiso"}
+EASTERN  = {"amuria","budaka","bududa","bugiri","bugweri","bukedea","bukwa","bulambuli",
+             "busia","butaleja","butebo","buyende","iganga","jinja","kaberamaido",
+             "kaliro","kamuli","kapchorwa","katakwi","kibuku","kumi","kween","luuka",
+             "manafwa","mayuge","mbale","namayingo","namisindwa","namutumba","ngora",
+             "pallisa","serere","sironko","soroti","tororo"}
+WESTERN  = {"bundibugyo","bunyangabu","bushenyi","hoima","ibanda","isingiro","kabale",
+             "kabarole","kagadi","kakumiro","kamwenge","kanungu","kasese","kibaale",
+             "kiruhura","kiryandongo","kisoro","kyegegwa","kyenjojo","masindi","mbarara",
+             "mitooma","ntoroko","ntungamo","rubanda","rubirizi","rukiga","rukungiri",
+             "sheema","fort portal","fortportal"}
 
-def calculate_delivery_fee(city, items=None, item_count=None, subtotal=None):
+# Fees per unique product (not per quantity)
+KAMPALA_FEE   = 5_000   # Kampala & Central
+UPCOUNTRY_FEE = 10_000  # Western, Northern, Eastern
+
+
+def get_zone_fee(city: str) -> int:
+    """Return per-product delivery fee for the given city/district."""
     d = city.strip().lower() if city else ""
     if not d:
-        return 0
-
+        return UPCOUNTRY_FEE
     if d in CENTRAL:
-        fee = 3000
-    elif d in EASTERN:
-        fee = 5000
-    else:
-        fee = 8000  # Northern & Western
+        return KAMPALA_FEE
+    return UPCOUNTRY_FEE  # Western, Northern, Eastern all 10k
+
+
+def calculate_delivery_fee(city, items=None, item_count=None, subtotal=None):
+    """
+    Delivery is charged per UNIQUE product line, not per quantity.
+    e.g. 2x jeans = 1 product line = one delivery fee.
+    """
+    fee = get_zone_fee(city)
 
     if items is None:
+        # Fallback: item_count is number of unique product lines
         return fee * max(int(item_count or 1), 1)
 
     if hasattr(items, 'all'):
-        items = items.all()
+        items = list(items.all())
 
-    total_quantity = 0
-    for item in items:
-        if isinstance(item, dict):
-            total_quantity += int(item.get('quantity', 1) or 1)
-        else:
-            total_quantity += getattr(item, 'quantity', 1)
+    # Count unique product lines (each CartItem / OrderItem row = 1 line)
+    unique_lines = len(items)
+    return fee * max(unique_lines, 1)
 
-    return fee * total_quantity
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -80,6 +100,7 @@ class OrderSerializer(serializers.ModelSerializer):
     customer = serializers.SerializerMethodField()
     is_paid  = serializers.SerializerMethodField()
     delivery_fee = serializers.SerializerMethodField()
+    delivery_fee_per_item = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -88,7 +109,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'shipping_address', 'shipping_city', 'shipping_country',
             'shipping_zip', 'total_price', 'notes', 'items',
             'created_at', 'updated_at',
-            'customer', 'is_paid', 'delivery_fee',
+            'customer', 'is_paid', 'delivery_fee', 'delivery_fee_per_item',
         )
         read_only_fields = ('id', 'order_number', 'user_crud_number', 'status', 'created_at', 'updated_at')
 
@@ -106,6 +127,9 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def get_delivery_fee(self, obj):
         return calculate_delivery_fee(obj.shipping_city, obj.items.all())
+
+    def get_delivery_fee_per_item(self, obj):
+        return get_zone_fee(obj.shipping_city)
 
 
 class OrderItemInputSerializer(serializers.Serializer):
