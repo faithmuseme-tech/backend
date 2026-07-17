@@ -40,7 +40,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ('id', 'product', 'product_name', 'product_price', 'quantity', 'subtotal', 'product_image', 'trader_name')
+        fields = ('id', 'product', 'product_name', 'product_price', 'quantity', 'subtotal', 'product_image', 'trader_name', 'selected_options')
 
     def get_product_image(self, obj):
         if not obj.product:

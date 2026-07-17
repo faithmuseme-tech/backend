@@ -8,9 +8,11 @@ class CartItemSerializer(serializers.ModelSerializer):
     product_id = serializers.IntegerField(write_only=True)
     subtotal = serializers.ReadOnlyField()
 
+    selected_options = serializers.JSONField(required=False, default=dict)
+
     class Meta:
         model = CartItem
-        fields = ('id', 'product', 'product_id', 'quantity', 'subtotal')
+        fields = ('id', 'product', 'product_id', 'quantity', 'subtotal', 'selected_options')
 
 
 class CartSerializer(serializers.ModelSerializer):
