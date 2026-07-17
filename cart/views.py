@@ -27,12 +27,15 @@ class CartView(APIView):
         except Product.DoesNotExist:
             return Response({'error': 'Product not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        selected_options = request.data.get('selected_options', {})
         cart = self._get_cart(request.user)
         item, created = CartItem.objects.get_or_create(cart=cart, product=product)
         if not created:
             item.quantity += quantity
         else:
             item.quantity = quantity
+        if selected_options:
+            item.selected_options = selected_options
         item.save()
         return Response(CartSerializer(cart, context={'request': request}).data)
 

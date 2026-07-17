@@ -90,6 +90,7 @@ class CreateOrderView(APIView):
                     product_name=item.product.name,
                     product_price=item.product.price,
                     quantity=item.quantity,
+                    selected_options=item.selected_options or {},
                 )
             cart.items.all().delete()
         else:
