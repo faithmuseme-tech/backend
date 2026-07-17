@@ -7,8 +7,11 @@ from accounts.models import TraderProfile
 from accounts.serializers import AdminUserSerializer, TraderProfileSerializer
 from orders.models import Order
 from orders.serializers import OrderSerializer
-from products.models import Product
-from products.serializers import ProductListSerializer
+from products.models import Product, ProductImage
+from products.serializers import ProductListSerializer, ProductSerializer, ProductImageSerializer
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.utils.text import slugify
+import uuid
 from .permissions import IsAdminUser
 
 User = get_user_model()
@@ -161,6 +164,55 @@ class AdminProductListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Product.objects.select_related('brand', 'category', 'seller').prefetch_related('images').order_by('-created_at')
+
+
+class AdminProductDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = ProductSerializer
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        return Product.objects.select_related('brand', 'category', 'seller').prefetch_related('images').all()
+
+    def perform_update(self, serializer):
+        name = self.request.data.get('name', serializer.instance.name)
+        if name != serializer.instance.name:
+            uid = str(uuid.uuid4())[:8]
+            new_slug = slugify(name) + '-' + uid
+            while Product.objects.filter(slug=new_slug).exclude(pk=serializer.instance.pk).exists():
+                new_slug = slugify(name) + '-' + str(uuid.uuid4())[:8]
+            serializer.save(slug=new_slug)
+        else:
+            serializer.save()
+
+    def perform_destroy(self, instance):
+        instance.delete()
+
+
+class AdminProductImageView(APIView):
+    permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, pk):
+        try:
+            product = Product.objects.get(pk=pk)
+        except Product.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        image = request.FILES.get('image')
+        if not image:
+            return Response({'error': 'No image provided.'}, status=status.HTTP_400_BAD_REQUEST)
+        is_primary = not product.images.exists()
+        img = ProductImage.objects.create(product=product, image=image, is_primary=is_primary)
+        return Response(ProductImageSerializer(img).data, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, pk):
+        image_id = request.data.get('image_id')
+        try:
+            img = ProductImage.objects.get(id=image_id, product_id=pk)
+        except ProductImage.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        img.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class AdminProductToggleView(APIView):
