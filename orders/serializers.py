@@ -19,8 +19,11 @@ WESTERN  = {"bundibugyo","bunyangabu","bushenyi","hoima","ibanda","isingiro","ka
              "sheema","fort portal","fortportal"}
 
 # Fees per unique product (not per quantity)
-KAMPALA_FEE   = 5_000   # Kampala & Central
+KAMPALA_FEE = 5_000   # Kampala city
+CENTRAL_FEE = 8_000   # Central Uganda (outside Kampala)
 UPCOUNTRY_FEE = 10_000  # Western, Northern, Eastern
+
+KAMPALA_DISTRICTS = {"kampala", "wakiso", "mukono", "entebbe"}
 
 
 def get_zone_fee(city: str) -> int:
@@ -28,8 +31,10 @@ def get_zone_fee(city: str) -> int:
     d = city.strip().lower() if city else ""
     if not d:
         return UPCOUNTRY_FEE
-    if d in CENTRAL:
+    if d in KAMPALA_DISTRICTS:
         return KAMPALA_FEE
+    if d in CENTRAL:
+        return CENTRAL_FEE
     return UPCOUNTRY_FEE  # Western, Northern, Eastern all 10k
 
 
