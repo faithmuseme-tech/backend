@@ -33,21 +33,18 @@ def get_zone_fee(city: str) -> int:
 
 def calculate_delivery_fee(city, items=None, item_count=None, subtotal=None):
     """
-    Each product × its quantity is charged delivery.
-    1 product line  → 10,000 × total_quantity
-    2+ product lines → 5,000 × total_quantity
+    Total qty > 1 → 5,000 × total_qty
+    Total qty == 1 → 10,000
     """
     if hasattr(items, 'all'):
         items = list(items.all())
 
     if items is not None:
-        unique_lines = len(items)
         total_qty = sum(getattr(i, 'quantity', 1) for i in items)
     else:
-        unique_lines = int(item_count or 1)
-        total_qty = unique_lines  # fallback: assume qty=1 each
+        total_qty = int(item_count or 1)
 
-    fee = SINGLE_ITEM_FEE if unique_lines == 1 else MULTI_ITEM_FEE
+    fee = MULTI_ITEM_FEE if total_qty > 1 else SINGLE_ITEM_FEE
     return fee * max(total_qty, 1)
 
 
@@ -129,7 +126,8 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def get_delivery_fee_per_item(self, obj):
         items = list(obj.items.all())
-        return SINGLE_ITEM_FEE if len(items) <= 1 else MULTI_ITEM_FEE
+        total_qty = sum(i.quantity for i in items)
+        return SINGLE_ITEM_FEE if total_qty <= 1 else MULTI_ITEM_FEE
 
 
 class OrderItemInputSerializer(serializers.Serializer):
