@@ -112,7 +112,17 @@ class BestSellersView(generics.ListAPIView):
     serializer_class = ProductListSerializer
 
     def get_queryset(self):
-        return annotated_product_qs().filter(is_best_seller=True)[:12]
+        qs = annotated_product_qs().filter(is_best_seller=True).order_by('-_review_count', '-_avg_rating')[:8]
+        result = list(qs)
+        if len(result) < 8:
+            existing_ids = {p.id for p in result}
+            fallback = list(
+                annotated_product_qs()
+                .exclude(id__in=existing_ids)
+                .order_by('-_review_count', '-_avg_rating')[:8 - len(result)]
+            )
+            result += fallback
+        return result
 
 
 @method_decorator(cache_page(CACHE_5M), name='list')
