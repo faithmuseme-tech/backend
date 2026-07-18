@@ -36,9 +36,9 @@ def send_welcome_notification(sender, instance, created, **kwargs):
     Notification.objects.create(
         user=instance,
         type=Notification.TYPE_WELCOME,
-        title='Welcome to PrimeAisle! 🎉',
+        title='Welcome to Elitetechnology! 🎉',
         message=(
-            'Hi there! Welcome to PrimeAisle — Uganda\'s trusted marketplace and delivery platform. '
+            'Hi there! Welcome to Elitetechnology — Uganda\'s trusted marketplace and delivery platform. '
             'Browse genuine products from verified traders, place your order, and pay via Mobile Money to '
             '0794 448 439 (SABIRA SSEMATA). Our team may call you on 0794 448 439 to confirm your order. '
             'Remember: we will NEVER ask for your PIN or password. '
