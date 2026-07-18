@@ -4,6 +4,23 @@ from brands.serializers import BrandSerializer
 from categories.serializers import CategorySerializer
 
 
+def _proxy_url(url, request):
+    """Rewrite a Cloudinary URL to go through our /media/ proxy."""
+    if not url:
+        return None
+    import re
+    # Match: https://res.cloudinary.com/<cloud>/image/upload/<version>/media/<path>
+    m = re.search(r'res\.cloudinary\.com/[^/]+/image/upload/(?:v\d+/)?media/(.+)', url)
+    if m:
+        path = m.group(1)
+        if request:
+            return request.build_absolute_uri(f'/media/{path}')
+        from django.conf import settings
+        backend = getattr(settings, 'BACKEND_URL', 'https://web-production-1643f.up.railway.app')
+        return f'{backend}/media/{path}'
+    return url
+
+
 class ProductImageSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
 
@@ -13,12 +30,10 @@ class ProductImageSerializer(serializers.ModelSerializer):
 
     def get_image(self, obj):
         url = obj.image.url
-        if url.startswith('http'):
-            return url
         request = self.context.get('request')
-        if request:
-            return request.build_absolute_uri(url)
-        return f"http://127.0.0.1:8000{url}"
+        if not url.startswith('http'):
+            url = request.build_absolute_uri(url) if request else f"http://127.0.0.1:8000{url}"
+        return _proxy_url(url, request)
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -102,12 +117,10 @@ class ProductListSerializer(serializers.ModelSerializer):
         if not img:
             return None
         url = img.image.url
-        if url.startswith('http'):
-            return url
         request = self.context.get('request')
-        if request:
-            return request.build_absolute_uri(url)
-        return f"http://127.0.0.1:8000{url}"
+        if not url.startswith('http'):
+            url = request.build_absolute_uri(url) if request else f"http://127.0.0.1:8000{url}"
+        return _proxy_url(url, request)
 
     def get_delivery_charge(self, obj):
         return obj.effective_delivery_charge
