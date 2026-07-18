@@ -1,5 +1,20 @@
 from rest_framework import serializers
 from .models import Brand
+import re as _re
+
+
+def _proxy_url(url, request):
+    if not url:
+        return None
+    m = _re.search(r'res\.cloudinary\.com/[^/]+/image/upload/(?:v\d+/)?media/(.+)', url)
+    if m:
+        path = m.group(1)
+        if request:
+            return request.build_absolute_uri(f'/media/{path}')
+        from django.conf import settings
+        backend = getattr(settings, 'BACKEND_URL', 'https://web-production-1643f.up.railway.app')
+        return f'{backend}/media/{path}'
+    return url
 
 
 class BrandSerializer(serializers.ModelSerializer):
@@ -20,10 +35,10 @@ class BrandSerializer(serializers.ModelSerializer):
         if not obj.logo:
             return None
         url = obj.logo.url
-        if url.startswith('http'):
-            return url
         request = self.context.get('request')
-        return request.build_absolute_uri(url) if request else url
+        if not url.startswith('http'):
+            url = request.build_absolute_uri(url) if request else url
+        return _proxy_url(url, request)
 
     def create(self, validated_data):
         logo = validated_data.pop('logo_upload', None)
