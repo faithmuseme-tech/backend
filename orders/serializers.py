@@ -18,43 +18,37 @@ WESTERN  = {"bundibugyo","bunyangabu","bushenyi","hoima","ibanda","isingiro","ka
              "mitooma","ntoroko","ntungamo","rubanda","rubirizi","rukiga","rukungiri",
              "sheema","fort portal","fortportal"}
 
-# Fees per unique product (not per quantity)
-KAMPALA_FEE = 5_000   # Kampala city
-CENTRAL_FEE = 8_000   # Central Uganda (outside Kampala)
-UPCOUNTRY_FEE = 10_000  # Western, Northern, Eastern
+# Delivery fee rules:
+# - 1 product line ordered  → 10,000 per item (quantity multiplied)
+# - 2+ product lines        → 5,000 per item  (quantity multiplied), all regions
 
-KAMPALA_DISTRICTS = {"kampala", "wakiso", "mukono", "entebbe"}
+SINGLE_ITEM_FEE = 10_000
+MULTI_ITEM_FEE  = 5_000
 
 
 def get_zone_fee(city: str) -> int:
-    """Return per-product delivery fee for the given city/district."""
-    d = city.strip().lower() if city else ""
-    if not d:
-        return UPCOUNTRY_FEE
-    if d in KAMPALA_DISTRICTS:
-        return KAMPALA_FEE
-    if d in CENTRAL:
-        return CENTRAL_FEE
-    return UPCOUNTRY_FEE  # Western, Northern, Eastern all 10k
+    """Kept for serializer compatibility — base fee before quantity/line logic."""
+    return SINGLE_ITEM_FEE
 
 
 def calculate_delivery_fee(city, items=None, item_count=None, subtotal=None):
     """
-    Delivery is charged per UNIQUE product line, not per quantity.
-    e.g. 2x jeans = 1 product line = one delivery fee.
+    Each product × its quantity is charged delivery.
+    1 product line  → 10,000 × total_quantity
+    2+ product lines → 5,000 × total_quantity
     """
-    fee = get_zone_fee(city)
-
-    if items is None:
-        # Fallback: item_count is number of unique product lines
-        return fee * max(int(item_count or 1), 1)
-
     if hasattr(items, 'all'):
         items = list(items.all())
 
-    # Count unique product lines (each CartItem / OrderItem row = 1 line)
-    unique_lines = len(items)
-    return fee * max(unique_lines, 1)
+    if items is not None:
+        unique_lines = len(items)
+        total_qty = sum(getattr(i, 'quantity', 1) for i in items)
+    else:
+        unique_lines = int(item_count or 1)
+        total_qty = unique_lines  # fallback: assume qty=1 each
+
+    fee = SINGLE_ITEM_FEE if unique_lines == 1 else MULTI_ITEM_FEE
+    return fee * max(total_qty, 1)
 
 
 
@@ -134,7 +128,8 @@ class OrderSerializer(serializers.ModelSerializer):
         return calculate_delivery_fee(obj.shipping_city, obj.items.all())
 
     def get_delivery_fee_per_item(self, obj):
-        return get_zone_fee(obj.shipping_city)
+        items = list(obj.items.all())
+        return SINGLE_ITEM_FEE if len(items) <= 1 else MULTI_ITEM_FEE
 
 
 class OrderItemInputSerializer(serializers.Serializer):
