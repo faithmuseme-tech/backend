@@ -340,7 +340,7 @@ class ProductShareView(APIView):
 
         price = f"UGX {product.price:,.0f}" if product.price else ''
         title = f"{product.name} — {price}"
-        desc  = (product.description or f"Buy {product.name} at {price} on Elitetechnology.")[:200]
+        desc  = (product.description or f"Buy {product.name} at {price} on CartPulse.")[:200]
         page_url = f"{FRONTEND}/product/{slug}"
         fallback_img = f"{FRONTEND}/logo512.png"
         og_image = img_url or fallback_img
@@ -351,7 +351,7 @@ class ProductShareView(APIView):
   <meta charset="utf-8">
   <title>{title}</title>
   <meta property="og:type"        content="product">
-  <meta property="og:site_name"   content="Elitetechnology">
+  <meta property="og:site_name"   content="CartPulse">
   <meta property="og:title"       content="{title}">
   <meta property="og:description" content="{desc}">
   <meta property="og:image"       content="{og_image}">
