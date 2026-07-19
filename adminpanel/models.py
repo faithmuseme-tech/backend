@@ -1,6 +1,14 @@
 from django.db import models
 
 
+class NewsletterSubscriber(models.Model):
+    email = models.EmailField(unique=True)
+    subscribed_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.email
+
+
 class SiteSettings(models.Model):
     seller_registration_open = models.BooleanField(default=False)
 
