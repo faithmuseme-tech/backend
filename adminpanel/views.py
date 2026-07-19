@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.text import slugify
 import uuid
 from .permissions import IsAdminUser
-from .models import SiteSettings
+from .models import SiteSettings, NewsletterSubscriber
 
 User = get_user_model()
 
@@ -244,6 +244,19 @@ class AdminResetPasswordView(APIView):
         user.set_password(new_password)
         user.save()
         return Response({'message': f'Password reset for {user.email}.'})
+
+
+class NewsletterSubscribeView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        if not email:
+            return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        _, created = NewsletterSubscriber.objects.get_or_create(email=email)
+        if not created:
+            return Response({'detail': 'already_subscribed'}, status=status.HTTP_200_OK)
+        return Response({'detail': 'subscribed'}, status=status.HTTP_201_CREATED)
 
 
 class SiteSettingsView(APIView):
