@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import generics, status
+from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
 from django.db.models import Sum, Count
 from accounts.models import TraderProfile
@@ -13,6 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.text import slugify
 import uuid
 from .permissions import IsAdminUser
+from .models import SiteSettings
 
 User = get_user_model()
 
@@ -242,4 +244,24 @@ class AdminResetPasswordView(APIView):
         user.set_password(new_password)
         user.save()
         return Response({'message': f'Password reset for {user.email}.'})
+
+
+class SiteSettingsView(APIView):
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [IsAdminUser()]
+
+    def get(self, request):
+        s = SiteSettings.get()
+        return Response({'seller_registration_open': s.seller_registration_open})
+
+    def patch(self, request):
+        s = SiteSettings.get()
+        val = request.data.get('seller_registration_open')
+        if val is None:
+            return Response({'error': 'seller_registration_open required.'}, status=status.HTTP_400_BAD_REQUEST)
+        s.seller_registration_open = bool(val)
+        s.save()
+        return Response({'seller_registration_open': s.seller_registration_open})
 

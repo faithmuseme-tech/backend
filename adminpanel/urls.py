@@ -4,7 +4,7 @@ from .views import (
     AdminTraderListView, AdminTraderApproveView,
     AdminOrderListView, AdminOrderDetailView, AdminOrderStatusUpdateView, AdminOrderLookupView,
     AdminProductListView, AdminProductDetailView, AdminProductImageView, AdminProductToggleView,
-    AdminResetPasswordView,
+    AdminResetPasswordView, SiteSettingsView,
 )
 
 urlpatterns = [
@@ -22,4 +22,5 @@ urlpatterns = [
     path('products/<int:pk>/', AdminProductDetailView.as_view(), name='admin_product_detail'),
     path('products/<int:pk>/images/', AdminProductImageView.as_view(), name='admin_product_images'),
     path('products/<int:pk>/toggle/', AdminProductToggleView.as_view(), name='admin_product_toggle'),
+    path('settings/', SiteSettingsView.as_view(), name='admin_settings'),
 ]
