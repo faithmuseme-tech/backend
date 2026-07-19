@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
             name='SiteSettings',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('seller_registration_open', models.BooleanField(default=True)),
+                ('seller_registration_open', models.BooleanField(default=False)),
             ],
             options={'verbose_name': 'Site Settings'},
         ),

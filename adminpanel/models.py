@@ -2,7 +2,7 @@ from django.db import models
 
 
 class SiteSettings(models.Model):
-    seller_registration_open = models.BooleanField(default=True)
+    seller_registration_open = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Site Settings"
