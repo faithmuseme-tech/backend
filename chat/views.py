@@ -10,7 +10,7 @@ from .serializers import ChatRoomSerializer, ChatMessageSerializer
 
 User = get_user_model()
 
-ALLOWED_MIME_PREFIXES = ('image/', 'video/')
+ALLOWED_MIME_PREFIXES = ('image/', 'video/', 'audio/')
 ALLOWED_EXTENSIONS    = ('.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt')
 MAX_FILE_MB           = 20
 
@@ -28,6 +28,8 @@ def _upload_to_cloudinary(file):
         resource_type, ftype = 'image', 'image'
     elif mime.startswith('video/'):
         resource_type, ftype = 'video', 'video'
+    elif mime.startswith('audio/'):
+        resource_type, ftype = 'video', 'audio'  # Cloudinary uses 'video' resource_type for audio
     elif any(name.endswith(ext) for ext in ALLOWED_EXTENSIONS):
         resource_type, ftype = 'raw', 'doc'
     else:
