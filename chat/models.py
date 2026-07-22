@@ -33,8 +33,9 @@ class ChatRoom(models.Model):
 class ChatMessage(models.Model):
     FILE_IMAGE   = 'image'
     FILE_VIDEO   = 'video'
+    FILE_AUDIO   = 'audio'
     FILE_DOC     = 'doc'
-    FILE_CHOICES = [(FILE_IMAGE, 'Image'), (FILE_VIDEO, 'Video'), (FILE_DOC, 'Document')]
+    FILE_CHOICES = [(FILE_IMAGE, 'Image'), (FILE_VIDEO, 'Video'), (FILE_AUDIO, 'Audio'), (FILE_DOC, 'Document')]
 
     room       = models.ForeignKey(ChatRoom, on_delete=models.CASCADE, related_name='messages')
     sender     = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_messages')
