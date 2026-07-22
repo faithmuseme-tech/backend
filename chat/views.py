@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.contrib.auth import get_user_model
 import cloudinary.uploader
+from config.cloudinary_utils import delete_chat_file
 from .models import ChatRoom, ChatMessage
 from .serializers import ChatRoomSerializer, ChatMessageSerializer
 
@@ -103,6 +104,9 @@ class MessageDetailView(APIView):
             msg = ChatMessage.objects.get(id=msg_id, sender=request.user)
         except ChatMessage.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
+        # Delete file from Cloudinary before wiping the URL
+        if msg.file_url and msg.file_type:
+            delete_chat_file(msg.file_url, msg.file_type)
         msg.body = ''
         msg.file_url = msg.file_type = msg.file_name = ''
         msg.is_deleted = True
@@ -119,6 +123,10 @@ class MessageBulkDeleteView(APIView):
         if not ids:
             return Response({'error': 'ids required.'}, status=status.HTTP_400_BAD_REQUEST)
         msgs = ChatMessage.objects.filter(id__in=ids, sender=request.user)
+        # Delete Cloudinary files before wiping URLs
+        for msg in msgs:
+            if msg.file_url and msg.file_type:
+                delete_chat_file(msg.file_url, msg.file_type)
         msgs.update(body='', file_url='', file_type='', file_name='', is_deleted=True)
         return Response({'deleted': list(msgs.values_list('id', flat=True))})
 

@@ -12,6 +12,7 @@ from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_headers
 from .models import Product, ProductImage
 from .serializers import ProductSerializer, ProductListSerializer, ProductImageSerializer
+from config.cloudinary_utils import delete_cloudinary_file
 
 
 def is_approved_trader(user):
@@ -455,5 +456,6 @@ class TraderProductImageView(APIView):
             img = ProductImage.objects.get(id=image_id, product__seller=request.user)
         except ProductImage.DoesNotExist:
             return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        # MediaCloudinaryStorage.delete() is called automatically by img.delete()
         img.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
