@@ -11,6 +11,7 @@ from .serializers import (
 from cart.models import Cart
 from products.models import Product
 from adminpanel.permissions import IsAdminUser
+from notifications.models import Notification
 
 
 class OrderListView(generics.ListAPIView):
@@ -18,7 +19,7 @@ class OrderListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        qs = Order.objects.filter(user=self.request.user).prefetch_related('items__product__images')
+        qs = Order.objects.filter(user=self.request.user).prefetch_related('items__product__images', 'return_requests')
         order_number = self.request.query_params.get('order_number')
         if order_number:
             qs = qs.filter(order_number=order_number)
@@ -33,7 +34,7 @@ class OrderDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Order.objects.filter(user=self.request.user).prefetch_related('items__product__images')
+        return Order.objects.filter(user=self.request.user).prefetch_related('items__product__images', 'return_requests')
 
     def get_serializer_context(self):
         return {**super().get_serializer_context(), 'request': self.request}
@@ -199,3 +200,42 @@ class AdminReturnRequestDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAdminUser]
     serializer_class = ReturnRequestAdminSerializer
     queryset = ReturnRequest.objects.select_related('order', 'user').prefetch_related('items').all()
+
+    def perform_update(self, serializer):
+        old_status = serializer.instance.status
+        rr = serializer.save()
+        new_status = rr.status
+
+        if new_status != old_status:
+            STATUS_MESSAGES = {
+                'approved':  (
+                    'Return Request Approved',
+                    f'Your return request for order #{str(rr.order.order_number)[:8].upper()} has been approved. '
+                    f'Please bring the item(s) to our location or await further instructions.'
+                ),
+                'rejected':  (
+                    'Return Request Rejected',
+                    f'Your return request for order #{str(rr.order.order_number)[:8].upper()} has been reviewed '
+                    f'and unfortunately does not meet our return criteria.'
+                ),
+                'completed': (
+                    'Return Completed',
+                    f'Your return for order #{str(rr.order.order_number)[:8].upper()} has been completed '
+                    f'and your refund is being processed.'
+                ),
+                'pending':   (
+                    'Return Request Received',
+                    f'We have received your return request for order #{str(rr.order.order_number)[:8].upper()} '
+                    f'and will review it shortly.'
+                ),
+            }
+            title, message = STATUS_MESSAGES.get(new_status, ('Return Update', 'Your return request has been updated.'))
+            if rr.admin_notes:
+                message += f'\n\nAdmin note: {rr.admin_notes}'
+            Notification.objects.create(
+                user=rr.user,
+                type=Notification.TYPE_RETURN_UPDATE,
+                title=title,
+                message=message,
+                order_id=rr.order.id,
+            )

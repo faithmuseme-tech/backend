@@ -7,10 +7,12 @@ class Notification(models.Model):
     TYPE_RATE_PRODUCT = 'rate_product'
     TYPE_ORDER_UPDATE = 'order_update'
     TYPE_WELCOME      = 'welcome'
+    TYPE_RETURN_UPDATE = 'return_update'
     TYPE_CHOICES = [
-        (TYPE_RATE_PRODUCT, 'Rate Product'),
-        (TYPE_ORDER_UPDATE, 'Order Update'),
-        (TYPE_WELCOME,      'Welcome'),
+        (TYPE_RATE_PRODUCT,  'Rate Product'),
+        (TYPE_ORDER_UPDATE,  'Order Update'),
+        (TYPE_WELCOME,       'Welcome'),
+        (TYPE_RETURN_UPDATE, 'Return Update'),
     ]
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifications')

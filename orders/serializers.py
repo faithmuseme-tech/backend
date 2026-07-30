@@ -105,6 +105,7 @@ class OrderSerializer(serializers.ModelSerializer):
     is_paid  = serializers.SerializerMethodField()
     delivery_fee = serializers.SerializerMethodField()
     delivery_fee_per_item = serializers.SerializerMethodField()
+    return_request = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -114,6 +115,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'shipping_zip', 'total_price', 'notes', 'items',
             'created_at', 'updated_at',
             'customer', 'is_paid', 'delivery_fee', 'delivery_fee_per_item',
+            'return_request',
         )
         read_only_fields = ('id', 'order_number', 'user_crud_number', 'status', 'created_at', 'updated_at')
 
@@ -138,6 +140,16 @@ class OrderSerializer(serializers.ModelSerializer):
         if total_qty == 1:
             return SINGLE_ITEM_FEE
         return DISCOUNTED_FEE if MULTI_ITEM_FEE * total_qty > DELIVERY_CAP else MULTI_ITEM_FEE
+
+    def get_return_request(self, obj):
+        rr = obj.return_requests.first()
+        if not rr:
+            return None
+        return {
+            'id':     rr.id,
+            'status': rr.status,
+            'reason': rr.reason,
+        }
 
 
 class OrderItemInputSerializer(serializers.Serializer):
