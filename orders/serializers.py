@@ -112,12 +112,12 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'order_number', 'user_crud_number', 'status',
             'shipping_address', 'shipping_city', 'shipping_country',
-            'shipping_zip', 'total_price', 'notes', 'items',
+            'shipping_zip', 'total_price', 'notes', 'secret_word', 'items',
             'created_at', 'updated_at',
             'customer', 'is_paid', 'delivery_fee', 'delivery_fee_per_item',
             'return_request',
         )
-        read_only_fields = ('id', 'order_number', 'user_crud_number', 'status', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'order_number', 'user_crud_number', 'status', 'secret_word', 'created_at', 'updated_at')
 
     def get_customer(self, obj):
         u = obj.user

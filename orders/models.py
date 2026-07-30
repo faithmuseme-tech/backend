@@ -1,8 +1,17 @@
 import uuid
+import random
+import string
 
 from django.db import models
 from django.conf import settings
 from products.models import Product
+
+
+def _generate_secret_word():
+    """e.g. BLUE-7429"""
+    colors = ["BLUE", "RED", "GOLD", "LIME", "TEAL", "PINK", "JADE", "RUBY", "SAGE", "BOLT"]
+    digits = "".join(random.choices(string.digits, k=4))
+    return f"{random.choice(colors)}-{digits}"
 
 
 class Order(models.Model):
@@ -27,6 +36,7 @@ class Order(models.Model):
     shipping_zip = models.CharField(max_length=20)
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     notes = models.TextField(blank=True)
+    secret_word = models.CharField(max_length=20, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -36,6 +46,8 @@ class Order(models.Model):
     def save(self, *args, **kwargs):
         if self.user and not self.user_crud_number:
             self.user_crud_number = self.user.crud_number
+        if not self.secret_word:
+            self.secret_word = _generate_secret_word()
         super().save(*args, **kwargs)
 
     def __str__(self):
