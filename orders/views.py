@@ -161,13 +161,34 @@ class ReturnRequestCreateView(APIView):
         s.is_valid(raise_exception=True)
         d = s.validated_data
 
-        try:
-            order = Order.objects.get(id=d['order_id'], user=request.user, status='delivered')
-        except Order.DoesNotExist:
-            return Response({'error': 'Order not found or not eligible for return.'}, status=status.HTTP_400_BAD_REQUEST)
+        # 1. User must have at least one order
+        if not Order.objects.filter(user=request.user).exists():
+            return Response(
+                {'error': 'no_orders', 'detail': 'You have not placed any orders yet.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
+        # 2. Order must exist, belong to user, and be delivered
+        try:
+            order = Order.objects.get(id=d['order_id'], user=request.user)
+        except Order.DoesNotExist:
+            return Response(
+                {'error': 'order_not_found', 'detail': 'Order not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if order.status != 'delivered':
+            return Response(
+                {'error': 'not_delivered', 'detail': f'Order is currently "{order.status}". Only delivered orders are eligible for a return.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # 3. No duplicate return request
         if ReturnRequest.objects.filter(order=order, user=request.user).exists():
-            return Response({'error': 'A return request for this order already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'duplicate_return', 'detail': 'A return request for this order already exists.'},
+                status=status.HTTP_409_CONFLICT
+            )
 
         rr = ReturnRequest.objects.create(
             order=order, user=request.user,
