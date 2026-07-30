@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    AdminStatsView, AdminUserListView, AdminUserDetailView,
+    AdminStatsView, AdminAnalyticsView, AdminUserListView, AdminUserDetailView,
     AdminTraderListView, AdminTraderApproveView,
     AdminOrderListView, AdminOrderDetailView, AdminOrderStatusUpdateView, AdminOrderLookupView,
     AdminProductListView, AdminProductDetailView, AdminProductImageView, AdminProductToggleView,
@@ -9,6 +9,7 @@ from .views import (
 
 urlpatterns = [
     path('stats/', AdminStatsView.as_view(), name='admin_stats'),
+    path('analytics/', AdminAnalyticsView.as_view(), name='admin_analytics'),
     path('users/', AdminUserListView.as_view(), name='admin_users'),
     path('users/<int:pk>/', AdminUserDetailView.as_view(), name='admin_user_detail'),
     path('users/<int:pk>/reset-password/', AdminResetPasswordView.as_view(), name='admin_reset_password'),

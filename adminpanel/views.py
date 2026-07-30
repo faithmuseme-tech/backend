@@ -3,12 +3,14 @@ from rest_framework.response import Response
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
-from django.db.models import Sum, Count
+from django.db.models import Sum, Count, Avg, F
+from django.utils import timezone
+from datetime import timedelta
 from accounts.models import TraderProfile
 from accounts.serializers import AdminUserSerializer, TraderProfileSerializer
 from orders.models import Order
 from orders.serializers import OrderSerializer
-from products.models import Product, ProductImage
+from products.models import Product, ProductImage, UserBehavior
 from products.serializers import ProductListSerializer, ProductSerializer, ProductImageSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.text import slugify
@@ -30,6 +32,157 @@ class AdminStatsView(APIView):
             'total_orders': Order.objects.count(),
             'total_revenue': Order.objects.aggregate(r=Sum('total_price'))['r'] or 0,
             'total_products': Product.objects.filter(is_active=True).count(),
+        })
+
+
+class AdminAnalyticsView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        now = timezone.now()
+        day30 = now - timedelta(days=30)
+        day7  = now - timedelta(days=7)
+        day1  = now - timedelta(days=1)
+
+        # ── User stats ──────────────────────────────────────────────────
+        total_users    = User.objects.filter(is_staff=False).count()
+        new_30d        = User.objects.filter(date_joined__gte=day30, is_staff=False).count()
+        new_7d         = User.objects.filter(date_joined__gte=day7,  is_staff=False).count()
+        new_24h        = User.objects.filter(date_joined__gte=day1,  is_staff=False).count()
+        traders        = User.objects.filter(is_trader=True).count()
+        customers      = User.objects.filter(is_trader=False, is_staff=False).count()
+
+        # Signups per day (last 30 days)
+        signups_by_day = (
+            User.objects
+            .filter(date_joined__gte=day30, is_staff=False)
+            .extra(select={'day': "date(date_joined)"})
+            .values('day')
+            .annotate(count=Count('id'))
+            .order_by('day')
+        )
+
+        # ── Geography ───────────────────────────────────────────────────
+        cities = (
+            User.objects
+            .filter(is_staff=False)
+            .exclude(city__isnull=True).exclude(city='')
+            .values('city')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:10]
+        )
+
+        # ── Orders ──────────────────────────────────────────────────────
+        orders_30d = Order.objects.filter(created_at__gte=day30)
+        orders_by_day = (
+            orders_30d
+            .extra(select={'day': "date(created_at)"})
+            .values('day')
+            .annotate(count=Count('id'), revenue=Sum('total_price'))
+            .order_by('day')
+        )
+        returning_users = (
+            Order.objects
+            .values('user_id')
+            .annotate(order_count=Count('id'))
+            .filter(order_count__gt=1)
+            .count()
+        )
+
+        # ── Product behavior ────────────────────────────────────────────
+        # Most viewed products (by event count)
+        most_viewed = (
+            UserBehavior.objects
+            .filter(created_at__gte=day30)
+            .values('product__id', 'product__name', 'product__slug')
+            .annotate(views=Count('id'), total_seconds=Sum('seconds_spent'))
+            .order_by('-views')[:10]
+        )
+
+        # Most time spent on products
+        most_time = (
+            UserBehavior.objects
+            .filter(created_at__gte=day30)
+            .values('product__id', 'product__name', 'product__slug')
+            .annotate(total_seconds=Sum('seconds_spent'), views=Count('id'))
+            .order_by('-total_seconds')[:10]
+        )
+
+        # Most viewed categories
+        top_categories = (
+            UserBehavior.objects
+            .filter(created_at__gte=day30, category__isnull=False)
+            .values('category__name')
+            .annotate(views=Count('id'))
+            .order_by('-views')[:8]
+        )
+
+        # Most viewed brands
+        top_brands = (
+            UserBehavior.objects
+            .filter(created_at__gte=day30, brand__isnull=False)
+            .values('brand__name')
+            .annotate(views=Count('id'))
+            .order_by('-views')[:8]
+        )
+
+        # Avg session time (seconds) per day
+        avg_time_by_day = (
+            UserBehavior.objects
+            .filter(created_at__gte=day30)
+            .extra(select={'day': "date(created_at)"})
+            .values('day')
+            .annotate(avg_seconds=Avg('seconds_spent'), sessions=Count('session_key', distinct=True))
+            .order_by('day')
+        )
+
+        # Active sessions today
+        active_today = (
+            UserBehavior.objects
+            .filter(created_at__gte=day1)
+            .values('session_key')
+            .distinct()
+            .count()
+        )
+
+        # Most ordered products
+        most_ordered = (
+            Order.objects
+            .filter(created_at__gte=day30)
+            .values('items__product_name')
+            .annotate(orders=Count('items__id'), revenue=Sum(F('items__product_price') * F('items__quantity')))
+            .exclude(items__product_name=None)
+            .order_by('-orders')[:10]
+        )
+
+        return Response({
+            'users': {
+                'total': total_users,
+                'customers': customers,
+                'traders': traders,
+                'new_30d': new_30d,
+                'new_7d': new_7d,
+                'new_24h': new_24h,
+                'returning': returning_users,
+                'signups_by_day': list(signups_by_day),
+            },
+            'geography': {
+                'top_cities': list(cities),
+            },
+            'orders': {
+                'total_30d': orders_30d.count(),
+                'revenue_30d': float(orders_30d.aggregate(r=Sum('total_price'))['r'] or 0),
+                'by_day': list(orders_by_day),
+            },
+            'behavior': {
+                'active_sessions_today': active_today,
+                'most_viewed_products': list(most_viewed),
+                'most_time_products': list(most_time),
+                'top_categories': list(top_categories),
+                'top_brands': list(top_brands),
+                'avg_time_by_day': list(avg_time_by_day),
+                'most_ordered_products': list(most_ordered),
+            },
         })
 
 
