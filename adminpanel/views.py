@@ -10,7 +10,7 @@ from accounts.models import TraderProfile
 from accounts.serializers import AdminUserSerializer, TraderProfileSerializer
 from orders.models import Order
 from orders.serializers import OrderSerializer
-from products.models import Product, ProductImage, UserBehavior
+from products.models import Product, ProductImage, UserBehavior, PageView
 from products.serializers import ProductListSerializer, ProductSerializer, ProductImageSerializer
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.text import slugify
@@ -145,6 +145,24 @@ class AdminAnalyticsView(APIView):
             .count()
         )
 
+        # Top pages by views and time spent
+        top_pages = (
+            PageView.objects
+            .filter(created_at__gte=day30)
+            .values('path')
+            .annotate(views=Count('id'), total_seconds=Sum('seconds_spent'))
+            .order_by('-views')[:15]
+        )
+
+        # Avg time per page
+        avg_time_per_page = (
+            PageView.objects
+            .filter(created_at__gte=day30)
+            .values('path')
+            .annotate(avg_seconds=Avg('seconds_spent'), views=Count('id'))
+            .order_by('-avg_seconds')[:10]
+        )
+
         # Most ordered products
         most_ordered = (
             Order.objects
@@ -182,6 +200,8 @@ class AdminAnalyticsView(APIView):
                 'top_brands': list(top_brands),
                 'avg_time_by_day': list(avg_time_by_day),
                 'most_ordered_products': list(most_ordered),
+                'top_pages': list(top_pages),
+                'avg_time_per_page': list(avg_time_per_page),
             },
         })
 

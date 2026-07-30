@@ -194,6 +194,25 @@ class RelatedProductsView(generics.ListAPIView):
 
 # ── Behavior Tracking & Recommendations ──────────────────────────────────────
 
+class TrackPageView(APIView):
+    """POST {path, seconds_spent} — records time spent on any frontend page."""
+    permission_classes = []
+    authentication_classes = []
+
+    def post(self, request):
+        from .models import PageView
+        path    = (request.data.get('path') or '').strip()[:255]
+        seconds = int(request.data.get('seconds_spent', 0))
+        if not path or seconds < 2:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        if request.user and request.user.is_authenticated:
+            key = f"user_{request.user.id}"
+        else:
+            key = request.session.session_key or request.META.get('REMOTE_ADDR', 'anon')
+        PageView.objects.create(session_key=key, path=path, seconds_spent=seconds)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class TrackBehaviorView(APIView):
     """POST {product_slug, seconds_spent} — stores a view event keyed by session/user."""
     permission_classes = []
