@@ -1,4 +1,5 @@
 from django.contrib import admin
+from contact.models import ContactInquiry
 from brands.models import Brand
 from categories.models import Category
 from products.models import Product, ProductImage
@@ -46,3 +47,10 @@ class OrderAdmin(admin.ModelAdmin):
     inlines = [OrderItemInline]
 
 admin.site.register(Payment)
+
+@admin.register(ContactInquiry)
+class ContactInquiryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'phone', 'inquiry_type', 'subject', 'status', 'created_at')
+    list_filter = ('status', 'inquiry_type')
+    search_fields = ('name', 'email', 'phone', 'subject')
+    readonly_fields = ('created_at', 'updated_at')
