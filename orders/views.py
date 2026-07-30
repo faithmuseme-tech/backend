@@ -3,10 +3,14 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, F
-from .models import Order, OrderItem
-from .serializers import OrderSerializer, CreateOrderSerializer, calculate_delivery_fee, get_zone_fee
+from .models import Order, OrderItem, ReturnRequest
+from .serializers import (
+    OrderSerializer, CreateOrderSerializer, calculate_delivery_fee, get_zone_fee,
+    ReturnRequestSerializer, ReturnRequestCreateSerializer, ReturnRequestAdminSerializer,
+)
 from cart.models import Cart
 from products.models import Product
+from adminpanel.permissions import IsAdminUser
 
 
 class OrderListView(generics.ListAPIView):
@@ -146,3 +150,52 @@ class TraderStatsView(APIView):
             'products_sold': products_sold,
             'orders_count': orders_count,
         })
+
+
+class ReturnRequestCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        s = ReturnRequestCreateSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        d = s.validated_data
+
+        try:
+            order = Order.objects.get(id=d['order_id'], user=request.user, status='delivered')
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found or not eligible for return.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if ReturnRequest.objects.filter(order=order, user=request.user).exists():
+            return Response({'error': 'A return request for this order already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        rr = ReturnRequest.objects.create(
+            order=order, user=request.user,
+            reason=d['reason'], description=d['description'],
+        )
+        if d['item_ids']:
+            items = OrderItem.objects.filter(id__in=d['item_ids'], order=order)
+            rr.items.set(items)
+
+        return Response(ReturnRequestSerializer(rr).data, status=status.HTTP_201_CREATED)
+
+    def get(self, request):
+        qs = ReturnRequest.objects.filter(user=request.user).select_related('order').prefetch_related('items')
+        return Response(ReturnRequestSerializer(qs, many=True).data)
+
+
+class AdminReturnRequestListView(generics.ListAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = ReturnRequestAdminSerializer
+
+    def get_queryset(self):
+        qs = ReturnRequest.objects.select_related('order', 'user').prefetch_related('items').all()
+        s = self.request.query_params.get('status')
+        if s:
+            qs = qs.filter(status=s)
+        return qs
+
+
+class AdminReturnRequestDetailView(generics.RetrieveUpdateAPIView):
+    permission_classes = [IsAdminUser]
+    serializer_class = ReturnRequestAdminSerializer
+    queryset = ReturnRequest.objects.select_related('order', 'user').prefetch_related('items').all()

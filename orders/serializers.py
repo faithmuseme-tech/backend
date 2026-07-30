@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Order, OrderItem
+from .models import Order, OrderItem, ReturnRequest
 
 
 # District sets — used to determine delivery zone
@@ -154,3 +154,51 @@ class CreateOrderSerializer(serializers.Serializer):
     shipping_zip = serializers.CharField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)
     items = OrderItemInputSerializer(many=True, required=False)
+
+
+class ReturnRequestSerializer(serializers.ModelSerializer):
+    order_number = serializers.SerializerMethodField()
+    item_names   = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = ReturnRequest
+        fields = ('id', 'order', 'order_number', 'reason', 'description',
+                  'status', 'admin_notes', 'item_names', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'status', 'admin_notes', 'created_at', 'updated_at')
+
+    def get_order_number(self, obj):
+        return str(obj.order.order_number)[:8].upper()
+
+    def get_item_names(self, obj):
+        return [i.product_name for i in obj.items.all()]
+
+
+class ReturnRequestCreateSerializer(serializers.Serializer):
+    order_id    = serializers.IntegerField()
+    item_ids    = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
+    reason      = serializers.ChoiceField(choices=[c[0] for c in ReturnRequest.REASON_CHOICES])
+    description = serializers.CharField()
+
+
+class ReturnRequestAdminSerializer(serializers.ModelSerializer):
+    order_number = serializers.SerializerMethodField()
+    item_names   = serializers.SerializerMethodField()
+    user_name    = serializers.SerializerMethodField()
+    user_phone   = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = ReturnRequest
+        fields = '__all__'
+        read_only_fields = ('id', 'order', 'user', 'created_at', 'updated_at')
+
+    def get_order_number(self, obj):
+        return str(obj.order.order_number)[:8].upper()
+
+    def get_item_names(self, obj):
+        return [i.product_name for i in obj.items.all()]
+
+    def get_user_name(self, obj):
+        return obj.user.get_full_name() or obj.user.email
+
+    def get_user_phone(self, obj):
+        return getattr(obj.user, 'phone', '') or '—'

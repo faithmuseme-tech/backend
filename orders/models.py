@@ -56,3 +56,35 @@ class OrderItem(models.Model):
     @property
     def subtotal(self):
         return self.product_price * self.quantity
+
+
+class ReturnRequest(models.Model):
+    REASON_CHOICES = [
+        ('defective', 'Defective / Faulty Product'),
+        ('wrong_item', 'Wrong Item Delivered'),
+        ('not_as_described', 'Not as Described'),
+        ('damaged_delivery', 'Damaged During Delivery'),
+        ('other', 'Other'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('completed', 'Completed'),
+    ]
+
+    order       = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='return_requests')
+    user        = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='return_requests')
+    items       = models.ManyToManyField(OrderItem, blank=True)
+    reason      = models.CharField(max_length=30, choices=REASON_CHOICES)
+    description = models.TextField()
+    status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    admin_notes = models.TextField(blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Return #{self.id} — Order {str(self.order.order_number)[:8].upper()}"

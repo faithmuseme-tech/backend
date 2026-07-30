@@ -6,7 +6,7 @@ from products.models import Product, ProductImage
 from reviews.models import Review
 from cart.models import Cart, CartItem
 from wishlist.models import Wishlist
-from orders.models import Order, OrderItem
+from orders.models import Order, OrderItem, ReturnRequest
 from payments.models import Payment
 
 admin.site.register(Brand)
@@ -47,6 +47,13 @@ class OrderAdmin(admin.ModelAdmin):
     inlines = [OrderItemInline]
 
 admin.site.register(Payment)
+
+@admin.register(ReturnRequest)
+class ReturnRequestAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'order', 'reason', 'status', 'created_at')
+    list_filter = ('status', 'reason')
+    search_fields = ('user__email', 'order__order_number')
+    readonly_fields = ('created_at', 'updated_at')
 
 @admin.register(ContactInquiry)
 class ContactInquiryAdmin(admin.ModelAdmin):
