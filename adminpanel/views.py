@@ -10,6 +10,8 @@ from datetime import timedelta
 from accounts.models import TraderProfile
 from accounts.serializers import AdminUserSerializer, TraderProfileSerializer
 from orders.models import Order, ReturnRequest
+from cart.models import Cart, CartItem
+from payments.models import Payment
 from orders.serializers import OrderSerializer
 from products.models import Product, ProductImage, UserBehavior, PageView
 from products.serializers import ProductListSerializer, ProductSerializer, ProductImageSerializer
@@ -194,6 +196,84 @@ class AdminAnalyticsView(APIView):
             .order_by('-avg_seconds')[:10]
         )
 
+        # Funnel & Conversion analytics (last 30 days)
+        # Step 1: Visitors — distinct sessions on any page
+        visitors_30d = (
+            PageView.objects
+            .filter(created_at__gte=day30)
+            .values('session_key')
+            .distinct()
+            .count()
+        )
+
+        # Step 2: Product views — distinct sessions that viewed a product
+        product_viewers_30d = (
+            UserBehavior.objects
+            .filter(created_at__gte=day30)
+            .values('session_key')
+            .distinct()
+            .count()
+        )
+
+        # Step 3: Add to Cart — distinct users who have/had cart items in 30d
+        # We use CartItem created_at via Cart.updated_at as proxy
+        add_to_cart_sessions = (
+            Cart.objects
+            .filter(updated_at__gte=day30, items__isnull=False)
+            .values('user_id')
+            .distinct()
+            .count()
+        )
+
+        # Step 4: Checkout — distinct sessions that visited /checkout
+        checkout_sessions = (
+            PageView.objects
+            .filter(created_at__gte=day30, path__icontains='/checkout')
+            .values('session_key')
+            .distinct()
+            .count()
+        )
+
+        # Step 5: Payment page — distinct sessions that visited /payment
+        payment_sessions = (
+            PageView.objects
+            .filter(created_at__gte=day30, path__icontains='/payment')
+            .values('session_key')
+            .distinct()
+            .count()
+        )
+
+        # Step 6: Completed orders (placed, not cancelled/refunded)
+        completed_orders_30d = (
+            Order.objects
+            .filter(created_at__gte=day30)
+            .exclude(status__in=['cancelled', 'refunded'])
+            .count()
+        )
+
+        # Searches — distinct sessions that visited /search
+        search_sessions_30d = (
+            PageView.objects
+            .filter(created_at__gte=day30, path__icontains='/search')
+            .values('session_key')
+            .distinct()
+            .count()
+        )
+        total_searches_30d = (
+            PageView.objects
+            .filter(created_at__gte=day30, path__icontains='/search')
+            .count()
+        )
+
+        # Rate calculations (guard div-by-zero)
+        def pct(num, den):
+            return round((num / den) * 100, 1) if den > 0 else 0
+
+        add_to_cart_rate      = pct(add_to_cart_sessions, product_viewers_30d)
+        cart_abandonment_rate = pct(add_to_cart_sessions - checkout_sessions, add_to_cart_sessions)
+        checkout_abandon_rate = pct(checkout_sessions - completed_orders_30d, checkout_sessions)
+        conversion_rate       = pct(completed_orders_30d, visitors_30d)
+
         # Returns analytics
         # 1. Orders not picked up: status='pickup' (awaiting collection)
         not_picked_up = Order.objects.filter(status='pickup').count()
@@ -265,6 +345,20 @@ class AdminAnalyticsView(APIView):
                 'delivery_fees_collected': delivery_fees_collected,
                 'by_day': list(orders_by_day),
                 'revenue_by_day': revenue_by_day_list,
+            },
+            'funnel_analytics': {
+                'visitors_30d': visitors_30d,
+                'product_viewers_30d': product_viewers_30d,
+                'add_to_cart_sessions': add_to_cart_sessions,
+                'checkout_sessions': checkout_sessions,
+                'payment_sessions': payment_sessions,
+                'completed_orders_30d': completed_orders_30d,
+                'search_sessions_30d': search_sessions_30d,
+                'total_searches_30d': total_searches_30d,
+                'add_to_cart_rate': add_to_cart_rate,
+                'cart_abandonment_rate': cart_abandonment_rate,
+                'checkout_abandonment_rate': checkout_abandon_rate,
+                'conversion_rate': conversion_rate,
             },
             'returns_analytics': {
                 'not_picked_up': not_picked_up,
