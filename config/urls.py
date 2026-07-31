@@ -39,5 +39,6 @@ urlpatterns = [
     path('api/v1/admin/', include('adminpanel.urls')),
     path('api/v1/chat/', include('chat.urls')),
     path('api/v1/contact/', include('contact.urls')),
+    path('api/v1/insights/', include('insights.urls')),
     re_path(r'^media/(?P<path>.+)$', media_proxy, name='media_proxy'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

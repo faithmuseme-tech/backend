@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'flashdeals',
     'chat',
     'contact',
+    'insights',
 ]
 
 MIDDLEWARE = [
