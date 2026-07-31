@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'chat',
     'contact',
     'insights',
+    'gmail',
 ]
 
 MIDDLEWARE = [
@@ -157,7 +158,12 @@ CSRF_TRUSTED_ORIGINS = config(
     default='https://web-production-1643f.up.railway.app'
 ).split(',')
 
-# ── Cloudinary ─────────────────────────────────────────────────────────────────
+# ── Gmail API (transactional email) ──────────────────────────────────────────
+GMAIL_CLIENT_ID = config('GMAIL_CLIENT_ID', default='')
+GMAIL_CLIENT_SECRET = config('GMAIL_CLIENT_SECRET', default='')
+GMAIL_REFRESH_TOKEN = config('GMAIL_REFRESH_TOKEN', default='')
+FRONTEND_URL = config('FRONTEND_URL', default='https://faithmuseme-tech.github.io/frontend')
+
 import cloudinary
 
 CLOUDINARY_STORAGE = {

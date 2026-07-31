@@ -9,6 +9,7 @@ from .serializers import (
     TraderRegisterSerializer, TraderProfileSerializer,
 )
 from .models import TraderProfile
+from .email import send_welcome_email
 
 User = get_user_model()
 
@@ -22,6 +23,7 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        send_welcome_email(user)
         refresh = RefreshToken.for_user(user)
         return Response({
             'user': UserSerializer(user).data,
