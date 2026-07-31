@@ -3,7 +3,8 @@ from rest_framework.response import Response
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
-from django.db.models import Sum, Count, Avg, F
+from django.db.models import Sum, Count, Avg, F, DecimalField, ExpressionWrapper
+from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import timedelta
 from accounts.models import TraderProfile
@@ -145,6 +146,36 @@ class AdminAnalyticsView(APIView):
             .count()
         )
 
+        COMMISSION_RATE = Product.COMMISSION_RATE
+        commission_expr = ExpressionWrapper(
+            F('items__product__trader_price') * F('items__quantity') * COMMISSION_RATE,
+            output_field=DecimalField(max_digits=14, decimal_places=2)
+        )
+        delivery_expr = ExpressionWrapper(
+            F('items__product__delivery_charge') * F('items__quantity'),
+            output_field=DecimalField(max_digits=14, decimal_places=2)
+        )
+        commission_earned = float(
+            orders_30d.filter(items__product__trader_price__isnull=False)
+            .aggregate(total=Sum(commission_expr))['total'] or 0
+        )
+        delivery_fees_collected = float(
+            orders_30d.filter(items__product__isnull=False)
+            .aggregate(total=Sum(delivery_expr))['total'] or 0
+        )
+        revenue_by_day = (
+            orders_30d
+            .filter(items__product__trader_price__isnull=False)
+            .annotate(day=TruncDate('created_at'))
+            .values('day')
+            .annotate(commission=Sum(commission_expr), delivery=Sum(delivery_expr))
+            .order_by('day')
+        )
+        revenue_by_day_list = [
+            {'day': str(r['day']), 'commission': float(r['commission'] or 0), 'delivery': float(r['delivery'] or 0)}
+            for r in revenue_by_day
+        ]
+
         # Top pages by views and time spent
         top_pages = (
             PageView.objects
@@ -190,7 +221,10 @@ class AdminAnalyticsView(APIView):
             'orders': {
                 'total_30d': orders_30d.count(),
                 'revenue_30d': float(orders_30d.aggregate(r=Sum('total_price'))['r'] or 0),
+                'commission_earned': commission_earned,
+                'delivery_fees_collected': delivery_fees_collected,
                 'by_day': list(orders_by_day),
+                'revenue_by_day': revenue_by_day_list,
             },
             'behavior': {
                 'active_sessions_today': active_today,
