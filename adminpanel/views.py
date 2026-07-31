@@ -7,7 +7,6 @@ from django.db.models import Sum, Count, Avg, F, DecimalField, ExpressionWrapper
 from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 from datetime import timedelta
-from dateutil.relativedelta import relativedelta
 from accounts.models import TraderProfile
 from accounts.serializers import AdminUserSerializer, TraderProfileSerializer
 from orders.models import Order, ReturnRequest
