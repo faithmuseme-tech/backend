@@ -9,7 +9,7 @@ from django.utils import timezone
 from datetime import timedelta
 from accounts.models import TraderProfile
 from accounts.serializers import AdminUserSerializer, TraderProfileSerializer
-from orders.models import Order
+from orders.models import Order, ReturnRequest
 from orders.serializers import OrderSerializer
 from products.models import Product, ProductImage, UserBehavior, PageView
 from products.serializers import ProductListSerializer, ProductSerializer, ProductImageSerializer
@@ -194,6 +194,46 @@ class AdminAnalyticsView(APIView):
             .order_by('-avg_seconds')[:10]
         )
 
+        # Returns analytics
+        # 1. Orders not picked up: status='pickup' (awaiting collection)
+        not_picked_up = Order.objects.filter(status='pickup').count()
+        not_picked_up_30d = Order.objects.filter(status='pickup', created_at__gte=day30).count()
+
+        # 2. Cancelled orders (includes those abandoned at pickup)
+        cancelled_total = Order.objects.filter(status='cancelled').count()
+        cancelled_30d = Order.objects.filter(status='cancelled', created_at__gte=day30).count()
+
+        # 3. User return requests
+        return_requests_total = ReturnRequest.objects.count()
+        return_requests_30d = ReturnRequest.objects.filter(created_at__gte=day30).count()
+
+        # By status
+        returns_by_status = list(
+            ReturnRequest.objects
+            .values('status')
+            .annotate(count=Count('id'))
+            .order_by('status')
+        )
+
+        # By reason
+        returns_by_reason = list(
+            ReturnRequest.objects
+            .values('reason')
+            .annotate(count=Count('id'))
+            .order_by('-count')
+        )
+
+        # Daily return requests (last 30d)
+        returns_by_day = list(
+            ReturnRequest.objects
+            .filter(created_at__gte=day30)
+            .annotate(day=TruncDate('created_at'))
+            .values('day')
+            .annotate(count=Count('id'))
+            .order_by('day')
+        )
+        returns_by_day = [{'day': str(r['day']), 'count': r['count']} for r in returns_by_day]
+
         # Most ordered products
         most_ordered = (
             Order.objects
@@ -225,6 +265,17 @@ class AdminAnalyticsView(APIView):
                 'delivery_fees_collected': delivery_fees_collected,
                 'by_day': list(orders_by_day),
                 'revenue_by_day': revenue_by_day_list,
+            },
+            'returns_analytics': {
+                'not_picked_up': not_picked_up,
+                'not_picked_up_30d': not_picked_up_30d,
+                'cancelled_total': cancelled_total,
+                'cancelled_30d': cancelled_30d,
+                'return_requests_total': return_requests_total,
+                'return_requests_30d': return_requests_30d,
+                'by_status': returns_by_status,
+                'by_reason': returns_by_reason,
+                'by_day': returns_by_day,
             },
             'behavior': {
                 'active_sessions_today': active_today,
