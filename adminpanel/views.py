@@ -197,6 +197,14 @@ class AdminAnalyticsView(APIView):
         )
 
         # Funnel & Conversion analytics (last 30 days)
+        # Real funnel logic:
+        # pending   = order placed, money NOT yet received (user checked out)
+        # confirmed = admin confirmed = money received
+        # delivered = order completed
+
+        def pct(num, den):
+            return round((num / den) * 100, 1) if den > 0 else 0
+
         # Step 1: Visitors — distinct sessions on any page
         visitors_30d = (
             PageView.objects
@@ -216,7 +224,6 @@ class AdminAnalyticsView(APIView):
         )
 
         # Step 3: Add to Cart — distinct users who have/had cart items in 30d
-        # We use CartItem created_at via Cart.updated_at as proxy
         add_to_cart_sessions = (
             Cart.objects
             .filter(updated_at__gte=day30, items__isnull=False)
@@ -225,33 +232,32 @@ class AdminAnalyticsView(APIView):
             .count()
         )
 
-        # Step 4: Checkout — distinct sessions that visited /checkout
-        checkout_sessions = (
-            PageView.objects
-            .filter(created_at__gte=day30, path__icontains='/checkout')
-            .values('session_key')
-            .distinct()
-            .count()
-        )
+        # Step 4: Checkout = orders placed (ALL statuses — placing an order = checked out)
+        orders_placed_30d = Order.objects.filter(created_at__gte=day30).count()
 
-        # Step 5: Payment page — distinct sessions that visited /payment
-        payment_sessions = (
-            PageView.objects
-            .filter(created_at__gte=day30, path__icontains='/payment')
-            .values('session_key')
-            .distinct()
-            .count()
-        )
-
-        # Step 6: Completed orders (placed, not cancelled/refunded)
-        completed_orders_30d = (
+        # Step 5: Payment received = admin confirmed order (confirmed/shipped/pickup/delivered)
+        # pending = placed but money not yet received; confirmed = admin received money
+        payment_received_30d = (
             Order.objects
-            .filter(created_at__gte=day30)
-            .exclude(status__in=['cancelled', 'refunded'])
+            .filter(created_at__gte=day30, status__in=['confirmed', 'shipped', 'pickup', 'delivered'])
             .count()
         )
 
-        # Searches — distinct sessions that visited /search
+        # Step 6: Delivered = fully completed
+        delivered_30d = (
+            Order.objects
+            .filter(created_at__gte=day30, status='delivered')
+            .count()
+        )
+
+        # Pending = placed but not yet confirmed (money not received)
+        pending_orders_30d = (
+            Order.objects
+            .filter(created_at__gte=day30, status='pending')
+            .count()
+        )
+
+        # Searches
         search_sessions_30d = (
             PageView.objects
             .filter(created_at__gte=day30, path__icontains='/search')
@@ -265,14 +271,21 @@ class AdminAnalyticsView(APIView):
             .count()
         )
 
-        # Rate calculations (guard div-by-zero)
-        def pct(num, den):
-            return round((num / den) * 100, 1) if den > 0 else 0
+        # Rates
+        # Add-to-cart rate: of product viewers, how many added to cart
+        add_to_cart_rate = pct(add_to_cart_sessions, product_viewers_30d)
 
-        add_to_cart_rate      = pct(add_to_cart_sessions, product_viewers_30d)
-        cart_abandonment_rate = pct(add_to_cart_sessions - checkout_sessions, add_to_cart_sessions)
-        checkout_abandon_rate = pct(checkout_sessions - completed_orders_30d, checkout_sessions)
-        conversion_rate       = pct(completed_orders_30d, visitors_30d)
+        # Cart abandonment: had items in cart but never placed an order
+        cart_abandonment_rate = pct(
+            max(add_to_cart_sessions - orders_placed_30d, 0),
+            add_to_cart_sessions
+        )
+
+        # Checkout abandonment: placed order (pending) but admin never confirmed (no payment)
+        checkout_abandonment_rate = pct(pending_orders_30d, orders_placed_30d)
+
+        # Conversion rate: visitors who got to delivered
+        conversion_rate = pct(delivered_30d, visitors_30d)
 
         # Returns analytics
         # 1. Orders not picked up: status='pickup' (awaiting collection)
@@ -350,14 +363,15 @@ class AdminAnalyticsView(APIView):
                 'visitors_30d': visitors_30d,
                 'product_viewers_30d': product_viewers_30d,
                 'add_to_cart_sessions': add_to_cart_sessions,
-                'checkout_sessions': checkout_sessions,
-                'payment_sessions': payment_sessions,
-                'completed_orders_30d': completed_orders_30d,
+                'orders_placed_30d': orders_placed_30d,
+                'payment_received_30d': payment_received_30d,
+                'delivered_30d': delivered_30d,
+                'pending_orders_30d': pending_orders_30d,
                 'search_sessions_30d': search_sessions_30d,
                 'total_searches_30d': total_searches_30d,
                 'add_to_cart_rate': add_to_cart_rate,
                 'cart_abandonment_rate': cart_abandonment_rate,
-                'checkout_abandonment_rate': checkout_abandon_rate,
+                'checkout_abandonment_rate': checkout_abandonment_rate,
                 'conversion_rate': conversion_rate,
             },
             'returns_analytics': {
