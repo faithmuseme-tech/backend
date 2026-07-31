@@ -106,6 +106,14 @@ class Product(models.Model):
         # Auto-calculate price from trader_price + 10% commission
         if self.trader_price:
             self.price = (self.trader_price * (1 + self.COMMISSION_RATE)).quantize(Decimal('0.01'))
+        # Auto-manage active status based on stock
+        self.is_active = self.stock > 0
+        # Ensure is_active is included when update_fields is used
+        if 'update_fields' in kwargs and kwargs['update_fields'] is not None:
+            uf = list(kwargs['update_fields'])
+            if 'is_active' not in uf:
+                uf.append('is_active')
+            kwargs['update_fields'] = uf
         super().save(*args, **kwargs)
 
 

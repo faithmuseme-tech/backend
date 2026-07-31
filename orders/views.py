@@ -97,6 +97,9 @@ class CreateOrderView(APIView):
                     quantity=item.quantity,
                     selected_options=item.selected_options or {},
                 )
+                p = item.product
+                p.stock = max(0, p.stock - item.quantity)
+                p.save(update_fields=['stock', 'is_active'])
             cart.items.all().delete()
         else:
             for item in payload_items:
@@ -110,6 +113,12 @@ class CreateOrderView(APIView):
                     product_price=item['product_price'],
                     quantity=item['quantity'],
                 )
+                if product:
+                    product.stock = max(0, product.stock - item['quantity'])
+                    product.save(update_fields=['stock', 'is_active'])
+
+        from products.views import clear_product_caches
+        clear_product_caches()
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
