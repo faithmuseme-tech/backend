@@ -3,10 +3,11 @@ from rest_framework.response import Response
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny
 from django.contrib.auth import get_user_model
-from django.db.models import Sum, Count, Avg, F, DecimalField, ExpressionWrapper
-from django.db.models.functions import TruncDate
+from django.db.models import Sum, Count, Avg, F, DecimalField, ExpressionWrapper, FloatField
+from django.db.models.functions import TruncDate, TruncMonth
 from django.utils import timezone
 from datetime import timedelta
+from dateutil.relativedelta import relativedelta
 from accounts.models import TraderProfile
 from accounts.serializers import AdminUserSerializer, TraderProfileSerializer
 from orders.models import Order, ReturnRequest
@@ -64,6 +65,129 @@ class AdminAnalyticsView(APIView):
             .annotate(count=Count('id'))
             .order_by('day')
         )
+
+        # ── Customer Analytics ──────────────────────────────────────────
+        day180 = now - timedelta(days=180)  # 6 months
+
+        # Total customers (non-trader, non-staff)
+        total_customers = User.objects.filter(is_trader=False, is_staff=False).count()
+
+        # New customers last 30d
+        new_customers_30d = User.objects.filter(
+            is_trader=False, is_staff=False, date_joined__gte=day30
+        ).count()
+
+        # Active customers: placed at least one order in last 30d
+        active_customers_30d = (
+            Order.objects
+            .filter(created_at__gte=day30)
+            .values('user_id')
+            .distinct()
+            .count()
+        )
+
+        # Returning customers: placed 2+ orders ever
+        returning_customers = (
+            Order.objects
+            .values('user_id')
+            .annotate(cnt=Count('id'))
+            .filter(cnt__gte=2)
+            .count()
+        )
+
+        # Repeat purchase rate: customers with 2+ orders / customers with any order
+        customers_with_orders = (
+            Order.objects.values('user_id').distinct().count()
+        )
+        repeat_purchase_rate = round(
+            (returning_customers / customers_with_orders * 100), 1
+        ) if customers_with_orders > 0 else 0
+
+        # Customer Retention Rate (30d): customers who ordered in prev 30d AND current 30d
+        day60 = now - timedelta(days=60)
+        prev_period_customers = set(
+            Order.objects
+            .filter(created_at__gte=day60, created_at__lt=day30)
+            .values_list('user_id', flat=True)
+            .distinct()
+        )
+        retained = (
+            Order.objects
+            .filter(created_at__gte=day30, user_id__in=prev_period_customers)
+            .values('user_id').distinct().count()
+        ) if prev_period_customers else 0
+        retention_rate = round(
+            (retained / len(prev_period_customers) * 100), 1
+        ) if prev_period_customers else 0
+
+        # CLV: avg total spend per customer who has ever ordered
+        clv_data = (
+            Order.objects
+            .exclude(status__in=['cancelled', 'refunded'])
+            .values('user_id')
+            .annotate(total_spent=Sum('total_price'))
+            .aggregate(avg_clv=Avg('total_spent'))
+        )
+        clv = float(clv_data['avg_clv'] or 0)
+
+        # CAC proxy: avg revenue per new customer (no ad spend tracked)
+        # = total revenue last 30d / new customers last 30d
+        revenue_30d_val = float(
+            Order.objects.filter(created_at__gte=day30)
+            .exclude(status__in=['cancelled', 'refunded'])
+            .aggregate(r=Sum('total_price'))['r'] or 0
+        )
+        cac = round(revenue_30d_val / new_customers_30d, 2) if new_customers_30d > 0 else 0
+
+        # Customers by location (city)
+        customers_by_city = list(
+            User.objects
+            .filter(is_trader=False, is_staff=False)
+            .exclude(city='').exclude(city__isnull=True)
+            .values('city')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:10]
+        )
+
+        # Customers by country
+        customers_by_country = list(
+            User.objects
+            .filter(is_trader=False, is_staff=False)
+            .exclude(country='').exclude(country__isnull=True)
+            .values('country')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:10]
+        )
+
+        # Monthly customer growth: new + returning per month for last 6 months
+        new_by_month = list(
+            User.objects
+            .filter(is_trader=False, is_staff=False, date_joined__gte=day180)
+            .annotate(month=TruncMonth('date_joined'))
+            .values('month')
+            .annotate(new=Count('id'))
+            .order_by('month')
+        )
+        # Active (ordered) per month last 6 months
+        active_by_month = list(
+            Order.objects
+            .filter(created_at__gte=day180)
+            .annotate(month=TruncMonth('created_at'))
+            .values('month')
+            .annotate(active=Count('user_id', distinct=True))
+            .order_by('month')
+        )
+        # Merge into combined monthly list
+        month_map = {}
+        for r in new_by_month:
+            key = str(r['month'])[:7]
+            month_map.setdefault(key, {'month': key, 'new': 0, 'active': 0})
+            month_map[key]['new'] = r['new']
+        for r in active_by_month:
+            key = str(r['month'])[:7]
+            month_map.setdefault(key, {'month': key, 'new': 0, 'active': 0})
+            month_map[key]['active'] = r['active']
+        customer_growth_by_month = sorted(month_map.values(), key=lambda x: x['month'])
 
         # ── Geography ───────────────────────────────────────────────────
         cities = (
@@ -347,6 +471,19 @@ class AdminAnalyticsView(APIView):
                 'new_24h': new_24h,
                 'returning': returning_users,
                 'signups_by_day': list(signups_by_day),
+            },
+            'customer_analytics': {
+                'total_customers': total_customers,
+                'new_customers_30d': new_customers_30d,
+                'active_customers_30d': active_customers_30d,
+                'returning_customers': returning_customers,
+                'repeat_purchase_rate': repeat_purchase_rate,
+                'retention_rate': retention_rate,
+                'clv': clv,
+                'cac': cac,
+                'by_city': customers_by_city,
+                'by_country': customers_by_country,
+                'growth_by_month': customer_growth_by_month,
             },
             'geography': {
                 'top_cities': list(cities),
