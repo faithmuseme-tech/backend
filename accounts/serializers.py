@@ -7,12 +7,28 @@ User = get_user_model()
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, validators=[validate_password])
+    password  = serializers.CharField(write_only=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True)
+    email     = serializers.EmailField(required=False, allow_blank=True, default="")
+    phone     = serializers.CharField(required=True)
 
     class Meta:
-        model = User
+        model  = User
         fields = ('username', 'email', 'password', 'password2', 'first_name', 'last_name', 'phone', 'city', 'address')
+
+    def validate_phone(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Phone number is required.")
+        if User.objects.filter(phone=value).exists():
+            raise serializers.ValidationError("An account with this phone number already exists.")
+        return value
+
+    def validate_email(self, value):
+        value = value.strip() if value else ""
+        if value and User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
 
     def validate(self, data):
         if data['password'] != data['password2']:
@@ -21,6 +37,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop('password2')
+        email = validated_data.pop('email', '').strip()
+        phone = validated_data['phone']
+        # Use email as username if provided, otherwise derive from phone
+        validated_data.setdefault('username', email if email else f"user_{phone}")
+        validated_data['email'] = email if email else None
         return User.objects.create_user(**validated_data)
 
 
@@ -54,7 +75,7 @@ class UserSerializer(serializers.ModelSerializer):
             'phone', 'avatar', 'address', 'city', 'country', 'zip_code',
             'is_trader', 'is_admin', 'trader_profile',
         )
-        read_only_fields = ('id', 'crud_number', 'email', 'is_trader', 'is_admin')
+        read_only_fields = ('id', 'crud_number', 'is_trader', 'is_admin')
 
 
 class AdminUserSerializer(serializers.ModelSerializer):

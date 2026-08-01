@@ -12,6 +12,8 @@ def _send(to_email: str, subject: str, html: str):
 
 def send_welcome_email(user):
     """Fire-and-forget welcome email after signup."""
+    if not user.email:
+        return  # no email provided, skip
     first_name = user.first_name or user.username or "there"
     frontend_url = getattr(settings, 'FRONTEND_URL', 'https://faithmuseme-tech.github.io/frontend')
     shop_url = f"{frontend_url}/shop"
