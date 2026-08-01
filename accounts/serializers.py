@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import TraderProfile
+from .models import TraderProfile, CookiePreference
 
 User = get_user_model()
 
@@ -121,3 +121,10 @@ class TraderRegisterSerializer(serializers.ModelSerializer):
         user.is_trader = True
         user.save()
         return TraderProfile.objects.create(user=user, **validated_data)
+
+
+class CookiePreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = CookiePreference
+        fields = ('necessary', 'analytics', 'updated_at')
+        read_only_fields = ('necessary', 'updated_at')

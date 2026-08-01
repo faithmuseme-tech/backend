@@ -7,9 +7,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
 from .serializers import (
     RegisterSerializer, UserSerializer, ChangePasswordSerializer,
-    TraderRegisterSerializer, TraderProfileSerializer, PhoneTokenObtainPairSerializer,
+    TraderRegisterSerializer, TraderProfileSerializer,
+    PhoneTokenObtainPairSerializer, CookiePreferenceSerializer,
 )
-from .models import TraderProfile
+from .models import TraderProfile, CookiePreference
 from .email import send_welcome_email
 
 User = get_user_model()
@@ -93,3 +94,18 @@ class TraderProfileView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user.trader_profile
+
+
+class CookiePreferenceView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        pref, _ = CookiePreference.objects.get_or_create(user=request.user)
+        return Response(CookiePreferenceSerializer(pref).data)
+
+    def post(self, request):
+        pref, _ = CookiePreference.objects.get_or_create(user=request.user)
+        serializer = CookiePreferenceSerializer(pref, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

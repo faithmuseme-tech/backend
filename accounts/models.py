@@ -23,7 +23,17 @@ class User(AbstractUser):
 
 
     def __str__(self):
-        return self.email
+        return self.phone or self.username
+
+
+class CookiePreference(models.Model):
+    user       = models.OneToOneField(User, on_delete=models.CASCADE, related_name='cookie_preference')
+    necessary  = models.BooleanField(default=True)   # always True, read-only
+    analytics  = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user} — analytics={self.analytics}"
 
 
 class TraderProfile(models.Model):

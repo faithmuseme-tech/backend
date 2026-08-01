@@ -3,6 +3,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     RegisterView, ProfileView, ChangePasswordView, LogoutView,
     TraderRegisterView, TraderProfileView, PhoneTokenObtainPairView,
+    CookiePreferenceView,
 )
 
 urlpatterns = [
@@ -14,4 +15,5 @@ urlpatterns = [
     path('change-password/', ChangePasswordView.as_view(), name='change_password'),
     path('trader/register/', TraderRegisterView.as_view(), name='trader_register'),
     path('trader/profile/', TraderProfileView.as_view(), name='trader_profile'),
+    path('cookie-preferences/', CookiePreferenceView.as_view(), name='cookie_preferences'),
 ]
