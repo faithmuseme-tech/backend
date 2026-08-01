@@ -22,6 +22,8 @@ class RegisterSerializer(serializers.ModelSerializer):
     email     = serializers.EmailField(required=False, allow_blank=True, default="")
     phone     = serializers.CharField(required=True)
 
+    username  = serializers.CharField(required=False, allow_blank=True, default="")
+
     class Meta:
         model  = User
         fields = ('username', 'email', 'password', 'password2', 'first_name', 'last_name', 'phone', 'city', 'address')
@@ -49,7 +51,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password2')
         email = validated_data.pop('email', '').strip()
         phone = validated_data['phone']
-        validated_data.setdefault('username', email if email else f"user_{phone}")
+        username = validated_data.get('username', '').strip()
+        validated_data['username'] = username if username else (email if email else f"user_{phone}")
         validated_data['email'] = email if email else None
         return User.objects.create_user(**validated_data)
 
