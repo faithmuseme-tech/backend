@@ -1,9 +1,19 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import TraderProfile
 
 User = get_user_model()
+
+
+class PhoneTokenObtainPairSerializer(TokenObtainPairSerializer):
+    username_field = 'phone'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['phone'] = serializers.CharField()
+        self.fields.pop('email', None)
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -39,7 +49,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password2')
         email = validated_data.pop('email', '').strip()
         phone = validated_data['phone']
-        # Use email as username if provided, otherwise derive from phone
         validated_data.setdefault('username', email if email else f"user_{phone}")
         validated_data['email'] = email if email else None
         return User.objects.create_user(**validated_data)
