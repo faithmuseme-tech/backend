@@ -12,6 +12,7 @@ class Command(BaseCommand):
         email = config('ADMIN_EMAIL', default='')
         password = config('ADMIN_PASSWORD', default='')
         username = config('ADMIN_USERNAME', default='admin')
+        phone = config('ADMIN_PHONE', default='')
 
         if not email or not password:
             self.stdout.write(self.style.WARNING('ADMIN_EMAIL or ADMIN_PASSWORD not set, skipping.'))
@@ -19,9 +20,11 @@ class Command(BaseCommand):
 
         user, created = User.objects.get_or_create(
             email=email,
-            defaults={'username': username},
+            defaults={'username': username, 'phone': phone},
         )
         user.username = username
+        if phone:
+            user.phone = phone
         user.is_staff = True
         user.is_superuser = True
         user.is_admin = True
