@@ -19,41 +19,22 @@ WESTERN  = {"bundibugyo","bunyangabu","bushenyi","hoima","ibanda","isingiro","ka
              "sheema","fort portal","fortportal"}
 
 # Delivery fee rules:
-# - 1 product line ordered  → 10,000 per item (quantity multiplied)
-# - 2+ product lines        → 5,000 per item  (quantity multiplied), all regions
+# - 1 product line  -> UGX 15,000 flat
+# - 2+ product lines -> UGX 15,000 flat (shared delivery)
 
-SINGLE_ITEM_FEE = 10_000
-MULTI_ITEM_FEE  = 5_000
-DELIVERY_CAP    = 90_000
-DISCOUNTED_FEE  = 4_500
+FLAT_FEE = 15_000
 
 
 def get_zone_fee(city: str) -> int:
     """Kept for serializer compatibility."""
-    return SINGLE_ITEM_FEE
+    return FLAT_FEE
 
 
 def calculate_delivery_fee(city, items=None, item_count=None, subtotal=None):
     """
-    total_qty == 1 -> 10,000
-    total_qty  > 1 -> 5,000 each until running total hits 90,000,
-                      then 4,500 per unit after that
+    Always UGX 15,000 flat regardless of quantity or region.
     """
-    if hasattr(items, 'all'):
-        items = list(items.all())
-
-    if items is not None:
-        total_qty = sum(getattr(i, 'quantity', 1) for i in items)
-    else:
-        total_qty = int(item_count or 1)
-
-    total_qty = max(total_qty, 1)
-    if total_qty == 1:
-        return SINGLE_ITEM_FEE
-
-    units_at_normal = min(total_qty, DELIVERY_CAP // MULTI_ITEM_FEE)
-    units_discounted = total_qty - units_at_normal
-    return units_at_normal * MULTI_ITEM_FEE + units_discounted * DISCOUNTED_FEE
+    return FLAT_FEE
 
 
 
@@ -135,11 +116,7 @@ class OrderSerializer(serializers.ModelSerializer):
         return calculate_delivery_fee(obj.shipping_city, obj.items.all())
 
     def get_delivery_fee_per_item(self, obj):
-        items = list(obj.items.all())
-        total_qty = max(sum(i.quantity for i in items), 1)
-        if total_qty == 1:
-            return SINGLE_ITEM_FEE
-        return DISCOUNTED_FEE if MULTI_ITEM_FEE * total_qty > DELIVERY_CAP else MULTI_ITEM_FEE
+        return FLAT_FEE
 
     def get_return_request(self, obj):
         rr = obj.return_requests.first()
