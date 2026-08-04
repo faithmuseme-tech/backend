@@ -18,13 +18,24 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('ADMIN_EMAIL or ADMIN_PASSWORD not set, skipping.'))
             return
 
-        user, created = User.objects.get_or_create(
-            email=email,
-            defaults={'username': username, 'phone': phone},
-        )
-        user.username = username
+        # Also try to find by phone in case email changed
+        user = None
         if phone:
-            user.phone = phone
+            user = User.objects.filter(phone=phone).first()
+        if user is None:
+            user = User.objects.filter(email=email).first()
+
+        created = False
+        if user is None:
+            user = User(email=email, username=username, phone=phone)
+            created = True
+        else:
+            user.username = username
+            if phone:
+                user.phone = phone
+            if email:
+                user.email = email
+
         user.is_staff = True
         user.is_superuser = True
         user.is_admin = True
