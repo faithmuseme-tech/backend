@@ -18,23 +18,35 @@ WESTERN  = {"bundibugyo","bunyangabu","bushenyi","hoima","ibanda","isingiro","ka
              "mitooma","ntoroko","ntungamo","rubanda","rubirizi","rukiga","rukungiri",
              "sheema","fort portal","fortportal"}
 
-# Delivery fee rules:
-# - 1 product line  -> UGX 15,000 flat
-# - 2+ product lines -> UGX 15,000 flat (shared delivery)
+# Delivery fee rules (based on total quantity across all cart items):
+# qty 1-3  -> UGX 15,000 flat
+# qty 4+   -> UGX 15,000 + (qty - 3) x 5,000
 
-FLAT_FEE = 15_000
+BASE_FEE = 15_000
+EXTRA_PER_UNIT = 5_000
+BASE_QTY_LIMIT = 3
+FLAT_FEE = BASE_FEE  # kept for backward compat
 
 
 def get_zone_fee(city: str) -> int:
     """Kept for serializer compatibility."""
-    return FLAT_FEE
+    return BASE_FEE
 
 
 def calculate_delivery_fee(city, items=None, item_count=None, subtotal=None):
     """
-    Always UGX 15,000 flat regardless of quantity or region.
+    qty 1-3 -> 15,000; qty 4+ -> 15,000 + (qty - 3) * 5,000
     """
-    return FLAT_FEE
+    total_qty = 0
+    if items:
+        for item in items:
+            if hasattr(item, 'quantity'):
+                total_qty += item.quantity
+            elif isinstance(item, dict):
+                total_qty += item.get('quantity', 1)
+    if total_qty <= BASE_QTY_LIMIT:
+        return BASE_FEE
+    return BASE_FEE + (total_qty - BASE_QTY_LIMIT) * EXTRA_PER_UNIT
 
 
 
@@ -116,7 +128,7 @@ class OrderSerializer(serializers.ModelSerializer):
         return calculate_delivery_fee(obj.shipping_city, obj.items.all())
 
     def get_delivery_fee_per_item(self, obj):
-        return FLAT_FEE
+        return BASE_FEE
 
     def get_return_request(self, obj):
         rr = obj.return_requests.first()
