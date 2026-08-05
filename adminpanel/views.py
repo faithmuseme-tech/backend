@@ -608,17 +608,23 @@ class AdminOrderListView(generics.ListAPIView):
     serializer_class = OrderSerializer
 
     def get_queryset(self):
-        qs = Order.objects.select_related('user').prefetch_related('items').order_by('-created_at')
+        qs = Order.objects.select_related('user').prefetch_related('items__product__images', 'return_requests').order_by('-created_at')
         status_filter = self.request.query_params.get('status')
         if status_filter:
             qs = qs.filter(status=status_filter)
         return qs
 
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), 'request': self.request}
+
 
 class AdminOrderDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAdminUser]
     serializer_class = OrderSerializer
-    queryset = Order.objects.select_related('user').prefetch_related('items').all()
+    queryset = Order.objects.select_related('user').prefetch_related('items__product__images', 'return_requests').all()
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), 'request': self.request}
 
 
 class AdminOrderStatusUpdateView(APIView):
@@ -627,7 +633,7 @@ class AdminOrderStatusUpdateView(APIView):
 
     def post(self, request, pk):
         try:
-            order = Order.objects.get(pk=pk)
+            order = Order.objects.select_related('user').prefetch_related('items__product__images', 'return_requests').get(pk=pk)
         except Order.DoesNotExist:
             return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -638,7 +644,7 @@ class AdminOrderStatusUpdateView(APIView):
 
         order.status = new_status
         order.save()
-        return Response(OrderSerializer(order).data)
+        return Response(OrderSerializer(order, context={'request': request}).data)
 
 
 class AdminOrderLookupView(APIView):
@@ -650,16 +656,16 @@ class AdminOrderLookupView(APIView):
         if not order_number:
             return Response({'error': 'order_number query parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        qs = Order.objects.select_related('user').prefetch_related('items__product__images', 'return_requests')
         try:
-            order = Order.objects.get(order_number__icontains=order_number)
+            order = qs.get(order_number__icontains=order_number)
         except Order.DoesNotExist:
             return Response({'error': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
         except Order.MultipleObjectsReturned:
-            # prefix matched multiple — return the list
-            orders = Order.objects.filter(order_number__icontains=order_number)
-            return Response(OrderSerializer(orders, many=True).data)
+            orders = qs.filter(order_number__icontains=order_number)
+            return Response(OrderSerializer(orders, many=True, context={'request': request}).data)
 
-        return Response(OrderSerializer(order).data)
+        return Response(OrderSerializer(order, context={'request': request}).data)
 
 
 class AdminProductListView(generics.ListAPIView):
