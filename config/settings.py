@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'contact',
     'insights',
     'gmail',
+    'coupons',
 ]
 
 MIDDLEWARE = [

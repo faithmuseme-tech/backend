@@ -132,7 +132,9 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'order_number', 'user_crud_number', 'status',
             'shipping_address', 'shipping_city', 'shipping_country',
-            'shipping_zip', 'total_price', 'notes', 'secret_word', 'items',
+            'shipping_zip', 'total_price', 'subtotal', 'delivery_fee',
+            'coupon_discount', 'points_discount', 'coupon_code_used', 'points_used',
+            'notes', 'secret_word', 'items',
             'created_at', 'updated_at',
             'customer', 'is_paid', 'delivery_fee', 'delivery_fee_per_item',
             'return_request',
@@ -182,6 +184,8 @@ class CreateOrderSerializer(serializers.Serializer):
     shipping_zip = serializers.CharField(required=False, allow_blank=True)
     notes = serializers.CharField(required=False, allow_blank=True)
     items = OrderItemInputSerializer(many=True, required=False)
+    coupon_code = serializers.CharField(required=False, allow_blank=True, default='')
+    redeem_points = serializers.BooleanField(required=False, default=False)
 
 
 class ReturnRequestSerializer(serializers.ModelSerializer):

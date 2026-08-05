@@ -12,6 +12,7 @@ from cart.models import Cart
 from products.models import Product
 from adminpanel.permissions import IsAdminUser
 from notifications.models import Notification
+from coupons.models import Coupon, CouponUsage, LoyaltyAccount, LoyaltyTransaction, PromotionConfig
 
 
 class OrderListView(generics.ListAPIView):
@@ -48,6 +49,8 @@ class CreateOrderView(APIView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         payload_items = data.pop('items', [])
+        coupon_code = (data.get('coupon_code') or '').strip().upper()
+        redeem_points = data.get('redeem_points', False)
 
         shipping_address = data.get('shipping_address') or request.user.address or ''
         shipping_city = data.get('shipping_city') or request.user.city or ''
@@ -66,20 +69,56 @@ class CreateOrderView(APIView):
             return Response({'error': 'Cart is empty.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if cart_items:
-            subtotal = sum(item.subtotal for item in cart_items)
+            subtotal = int(sum(item.subtotal for item in cart_items))
             delivery_items = cart_items
         else:
-            subtotal = sum(
+            subtotal = int(sum(
                 item['product_price'] * item['quantity'] for item in payload_items
-            )
+            ))
             delivery_items = payload_items
 
         delivery_fee = calculate_delivery_fee(shipping_city, delivery_items)
-        total = subtotal + delivery_fee
+
+        # ── Server-side coupon validation ──────────────────────────────────
+        cfg = PromotionConfig.get()
+        coupon_discount = 0
+        coupon_obj = None
+        if coupon_code:
+            try:
+                coupon_obj = Coupon.objects.get(code=coupon_code)
+                valid, reason = coupon_obj.is_valid_for(request.user)
+                if not valid:
+                    return Response({'error': reason}, status=status.HTTP_400_BAD_REQUEST)
+                coupon_discount = coupon_obj.discount
+            except Coupon.DoesNotExist:
+                return Response({'error': 'Invalid coupon code.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ── Server-side loyalty points validation ──────────────────────────
+        points_discount = 0
+        points_used = 0
+        loyalty_account = None
+        if redeem_points:
+            loyalty_account = LoyaltyAccount.for_user(request.user)
+            if loyalty_account.points_balance < cfg.points_redemption_minimum:
+                return Response(
+                    {'error': f'You need at least {cfg.points_redemption_minimum} points to redeem.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            points_used = loyalty_account.points_balance
+            points_discount = min(points_used * cfg.points_redemption_value, subtotal)
+
+        coupon_discount = min(coupon_discount, subtotal + delivery_fee)
+        grand_total = max(0, subtotal + delivery_fee - coupon_discount - points_discount)
 
         order = Order.objects.create(
             user=request.user,
-            total_price=total,
+            subtotal=subtotal,
+            delivery_fee=delivery_fee,
+            coupon_discount=coupon_discount,
+            points_discount=points_discount,
+            coupon_code_used=coupon_code,
+            points_used=points_used,
+            total_price=grand_total,
             shipping_address=shipping_address,
             shipping_city=shipping_city,
             shipping_country=shipping_country,
@@ -116,6 +155,23 @@ class CreateOrderView(APIView):
                 if product:
                     product.stock = max(0, product.stock - item['quantity'])
                     product.save(update_fields=['stock', 'is_active'])
+
+        # ── Record coupon usage ────────────────────────────────────────────
+        if coupon_obj:
+            coupon_obj.times_used += 1
+            coupon_obj.save(update_fields=['times_used'])
+            CouponUsage.objects.create(coupon=coupon_obj, user=request.user, order_id=order.id)
+
+        # ── Deduct loyalty points ──────────────────────────────────────────
+        if points_used > 0 and loyalty_account:
+            loyalty_account.points_balance = max(0, loyalty_account.points_balance - points_used)
+            loyalty_account.points_redeemed += points_used
+            loyalty_account.save(update_fields=['points_balance', 'points_redeemed', 'updated_at'])
+            LoyaltyTransaction.objects.create(
+                account=loyalty_account, order_id=order.id,
+                tx_type=LoyaltyTransaction.TYPE_REDEEM, points=-points_used,
+                note=f'Redeemed {points_used} pts for UGX {points_discount:,} discount on order #{str(order.order_number)[:8].upper()}'
+            )
 
         from products.views import clear_product_caches
         clear_product_caches()

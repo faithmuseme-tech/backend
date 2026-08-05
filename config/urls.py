@@ -40,5 +40,6 @@ urlpatterns = [
     path('api/v1/chat/', include('chat.urls')),
     path('api/v1/contact/', include('contact.urls')),
     path('api/v1/insights/', include('insights.urls')),
+    path('api/v1/promotions/', include('coupons.urls')),
     re_path(r'^media/(?P<path>.+)$', media_proxy, name='media_proxy'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
