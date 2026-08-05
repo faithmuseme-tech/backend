@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Sum, Count, F
+from django.utils import timezone
 from .models import Order, OrderItem, ReturnRequest
 from .serializers import (
     OrderSerializer, CreateOrderSerializer, calculate_delivery_fee, get_zone_fee,
@@ -174,6 +175,22 @@ class CreateOrderView(APIView):
                 tx_type=LoyaltyTransaction.TYPE_REDEEM, points=-points_used,
                 note=f'Redeemed {points_used} pts for UGX {points_discount:,} delivery fee discount on order #{str(order.order_number)[:8].upper()}'
             )
+
+        # ── Expire unused coupons after order is placed ──────────────────
+        # Any coupon belonging to this user that hasn't been used yet and has
+        # no expiry gets a 7-day window from now. Already-expiring coupons
+        # are left untouched so their existing deadline is respected.
+        # ── Expire unused coupons after order placed without using them ──────
+        # If the user had coupons available but didn't use them on this order,
+        # their chance has passed — expire them immediately.
+        Coupon.objects.filter(
+            user=request.user,
+            is_active=True,
+        ).exclude(
+            usages__user=request.user
+        ).exclude(
+            code=coupon_code if coupon_code else ''
+        ).update(expires_at=timezone.now(), is_active=False)
 
         from products.views import clear_product_caches
         clear_product_caches()
