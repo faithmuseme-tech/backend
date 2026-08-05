@@ -79,6 +79,7 @@ class TraderProfileSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     trader_profile = TraderProfileSerializer(read_only=True)
+    employee_permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -86,8 +87,15 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'crud_number', 'username', 'email', 'first_name', 'last_name',
             'phone', 'avatar', 'address', 'city', 'country', 'zip_code',
             'is_trader', 'is_admin', 'is_staff', 'trader_profile', 'notifications_enabled',
+            'employee_permissions',
         )
-        read_only_fields = ('id', 'crud_number', 'is_trader', 'is_admin')
+        read_only_fields = ('id', 'crud_number', 'is_trader', 'is_admin', 'is_staff')
+
+    def get_employee_permissions(self, obj):
+        try:
+            return obj.employee_profile.permissions
+        except Exception:
+            return None
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
