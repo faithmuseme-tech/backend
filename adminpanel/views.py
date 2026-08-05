@@ -834,7 +834,7 @@ class EmployeeListCreateView(APIView):
                 'phone': e.user.phone,
                 'first_name': e.user.first_name,
                 'last_name': e.user.last_name,
-                'avatar': e.user.avatar.url if e.user.avatar else None,
+                'avatar': e.user.avatar.url if e.user.avatar and e.user.avatar.name else None,
                 'permissions': e.permissions,
                 'must_change_password': e.must_change_password,
                 'added_by': e.added_by.phone if e.added_by else None,
