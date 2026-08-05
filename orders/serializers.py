@@ -123,8 +123,6 @@ class OrderSerializer(serializers.ModelSerializer):
     items    = OrderItemSerializer(many=True, read_only=True)
     customer = serializers.SerializerMethodField()
     is_paid  = serializers.SerializerMethodField()
-    delivery_fee = serializers.SerializerMethodField()
-    delivery_fee_per_item = serializers.SerializerMethodField()
     return_request = serializers.SerializerMethodField()
 
     class Meta:
@@ -136,8 +134,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'coupon_discount', 'points_discount', 'coupon_code_used', 'points_used',
             'notes', 'secret_word', 'items',
             'created_at', 'updated_at',
-            'customer', 'is_paid', 'delivery_fee', 'delivery_fee_per_item',
-            'return_request',
+            'customer', 'is_paid', 'return_request',
         )
         read_only_fields = ('id', 'order_number', 'user_crud_number', 'status', 'secret_word', 'created_at', 'updated_at')
 
@@ -152,12 +149,6 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def get_is_paid(self, obj):
         return obj.status not in ('pending', 'cancelled', 'refunded')
-
-    def get_delivery_fee(self, obj):
-        return calculate_delivery_fee(obj.shipping_city, obj.items.all())
-
-    def get_delivery_fee_per_item(self, obj):
-        return BASE_FEE
 
     def get_return_request(self, obj):
         rr = obj.return_requests.first()
