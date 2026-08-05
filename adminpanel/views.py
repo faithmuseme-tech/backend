@@ -873,7 +873,8 @@ class EmployeeListCreateView(APIView):
         else:
             user = User.objects.create_user(
                 phone=phone,
-                username=phone,
+                username=f"emp_{phone}",
+                email=None,
                 first_name=first_name or phone,
                 password=temp_pw,
             )
