@@ -104,8 +104,10 @@ class CreateOrderView(APIView):
                     {'error': f'You need at least {cfg.points_redemption_minimum} points to redeem.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            points_used = loyalty_account.points_balance
-            points_discount = min(points_used * cfg.points_redemption_value, subtotal)
+            # Points cover delivery fee only; use only what is needed
+            max_points_value = loyalty_account.points_balance * cfg.points_redemption_value
+            points_discount  = min(max_points_value, delivery_fee)
+            points_used      = -(-points_discount // cfg.points_redemption_value)  # ceiling div
 
         coupon_discount = min(coupon_discount, subtotal + delivery_fee)
         grand_total = max(0, subtotal + delivery_fee - coupon_discount - points_discount)
@@ -170,7 +172,7 @@ class CreateOrderView(APIView):
             LoyaltyTransaction.objects.create(
                 account=loyalty_account, order_id=order.id,
                 tx_type=LoyaltyTransaction.TYPE_REDEEM, points=-points_used,
-                note=f'Redeemed {points_used} pts for UGX {points_discount:,} discount on order #{str(order.order_number)[:8].upper()}'
+                note=f'Redeemed {points_used} pts for UGX {points_discount:,} delivery fee discount on order #{str(order.order_number)[:8].upper()}'
             )
 
         from products.views import clear_product_caches

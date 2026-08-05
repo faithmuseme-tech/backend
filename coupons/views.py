@@ -108,12 +108,13 @@ class CheckoutPreviewView(APIView):
                     f'You have {points_balance}.'
                 )
             else:
-                points_used     = points_balance
-                points_discount = points_used * cfg.points_redemption_value
+                # Points cover delivery fee only; use only what is needed
+                max_points_value = points_balance * cfg.points_redemption_value
+                points_discount  = min(max_points_value, delivery_fee)
+                points_used      = -(-points_discount // cfg.points_redemption_value)  # ceiling div
 
-        # Cap: coupon can reduce subtotal+delivery, points only reduce subtotal
+        # Cap coupon to subtotal + delivery
         coupon_discount = min(coupon_discount, subtotal + delivery_fee)
-        points_discount = min(points_discount, subtotal)
         grand_total     = max(0, subtotal + delivery_fee - coupon_discount - points_discount)
 
         return Response({
