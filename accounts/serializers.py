@@ -97,7 +97,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             'id', 'crud_number', 'username', 'email', 'first_name', 'last_name', 'phone',
-            'is_active', 'is_trader', 'is_admin', 'is_staff',
+            'avatar', 'is_active', 'is_trader', 'is_admin', 'is_staff',
             'trader_profile', 'date_joined',
         )
         read_only_fields = ('id', 'crud_number', 'email', 'date_joined')
