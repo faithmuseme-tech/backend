@@ -28,20 +28,30 @@ class AdminStatsView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        return Response({
-            'total_users': User.objects.filter(is_trader=False, is_staff=False).count(),
-            'total_traders': User.objects.filter(is_trader=True).count(),
-            'pending_traders': TraderProfile.objects.filter(status='pending').count(),
-            'total_orders': Order.objects.count(),
-            'total_revenue': Order.objects.aggregate(r=Sum('total_price'))['r'] or 0,
-            'total_products': Product.objects.filter(is_active=True).count(),
-        })
+        from django.core.cache import cache
+        data = cache.get('admin_stats')
+        if data is None:
+            data = {
+                'total_users': User.objects.filter(is_trader=False, is_staff=False).count(),
+                'total_traders': User.objects.filter(is_trader=True).count(),
+                'pending_traders': TraderProfile.objects.filter(status='pending').count(),
+                'total_orders': Order.objects.count(),
+                'total_revenue': Order.objects.aggregate(r=Sum('total_price'))['r'] or 0,
+                'total_products': Product.objects.filter(is_active=True).count(),
+            }
+            cache.set('admin_stats', data, 120)  # 2 minutes
+        return Response(data)
 
 
 class AdminAnalyticsView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
+        from django.core.cache import cache
+        cached = cache.get('admin_analytics')
+        if cached is not None:
+            return Response(cached)
+
         now = timezone.now()
         day30 = now - timedelta(days=30)
         day7  = now - timedelta(days=7)
@@ -460,7 +470,7 @@ class AdminAnalyticsView(APIView):
             .order_by('-orders')[:10]
         )
 
-        return Response({
+        result = {
             'users': {
                 'total': total_users,
                 'customers': customers,
@@ -532,7 +542,9 @@ class AdminAnalyticsView(APIView):
                 'top_pages': list(top_pages),
                 'avg_time_per_page': list(avg_time_per_page),
             },
-        })
+        }
+        cache.set('admin_analytics', result, 300)  # 5 minutes
+        return Response(result)
 
 
 class AdminUserListView(generics.ListAPIView):
@@ -774,15 +786,22 @@ class SiteSettingsView(APIView):
         return [IsAdminUser()]
 
     def get(self, request):
-        s = SiteSettings.get()
-        return Response({'seller_registration_open': s.seller_registration_open})
+        from django.core.cache import cache
+        data = cache.get('site_settings')
+        if data is None:
+            s = SiteSettings.get()
+            data = {'seller_registration_open': s.seller_registration_open}
+            cache.set('site_settings', data, 300)  # 5 minutes
+        return Response(data)
 
     def patch(self, request):
+        from django.core.cache import cache
         s = SiteSettings.get()
         val = request.data.get('seller_registration_open')
         if val is None:
             return Response({'error': 'seller_registration_open required.'}, status=status.HTTP_400_BAD_REQUEST)
         s.seller_registration_open = bool(val)
         s.save()
+        cache.delete('site_settings')  # invalidate on update
         return Response({'seller_registration_open': s.seller_registration_open})
 

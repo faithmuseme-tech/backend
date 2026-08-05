@@ -44,8 +44,13 @@ CACHE_10M = 60 * 10
 
 
 def clear_product_caches():
-    """Clear all product list caches so deletions appear immediately."""
+    """Clear product list caches so deletions appear immediately."""
     from django.core.cache import cache
+    cache.delete_many([
+        'category_list', 'brand_list',
+        'views.decorators.cache.cache_page',  # handled by key prefix
+    ])
+    # Also clear all cache_page keys under our prefix
     cache.clear()
 
 

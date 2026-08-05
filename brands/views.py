@@ -31,6 +31,14 @@ class BrandListView(generics.ListAPIView):
     def get_queryset(self):
         return brand_qs()
 
+    def list(self, request, *args, **kwargs):
+        data = cache.get('brand_list')
+        if data is None:
+            response = super().list(request, *args, **kwargs)
+            cache.set('brand_list', response.data, 600)  # 10 minutes
+            return response
+        return Response(data)
+
     def get_serializer_context(self):
         return {**super().get_serializer_context(), 'request': self.request}
 
@@ -72,7 +80,7 @@ class AdminBrandListCreateView(generics.ListCreateAPIView):
         while Brand.objects.filter(slug=slug).exists():
             slug = f"{base}-{i}"; i += 1
         serializer.save(slug=slug)
-        cache.clear()
+        cache.delete('brand_list')
 
 
 class AdminBrandDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -101,11 +109,11 @@ class AdminBrandDetailView(generics.RetrieveUpdateDestroyAPIView):
             serializer.save(slug=slug)
         else:
             serializer.save()
-        cache.clear()
+        cache.delete('brand_list')
 
     def perform_destroy(self, instance):
         if not is_admin(self.request.user):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied()
         instance.delete()
-        cache.clear()
+        cache.delete('brand_list')
