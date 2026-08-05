@@ -871,13 +871,14 @@ class EmployeeListCreateView(APIView):
         if existing_user:
             user = existing_user
         else:
-            user = User.objects.create_user(
+            user = User(
                 phone=phone,
                 username=f"emp_{phone}",
                 email=None,
                 first_name=first_name or phone,
-                password=temp_pw,
             )
+            user.set_password(temp_pw)
+            user.save()
 
         # Mark as staff so IsAdminUser passes for their permitted pages
         user.is_staff = True
