@@ -20,6 +20,27 @@ User = get_user_model()
 class PhoneTokenObtainPairView(TokenObtainPairView):
     serializer_class = PhoneTokenObtainPairSerializer
 
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            from django.contrib.auth import get_user_model
+            from adminpanel.models import Employee
+            U = get_user_model()
+            phone = request.data.get('phone')
+            try:
+                user = U.objects.get(phone=phone)
+                emp = user.employee_profile
+                if emp.must_change_password:
+                    response.data['must_change_password'] = True
+                    response.data['employee_permissions'] = emp.permissions
+                else:
+                    response.data['must_change_password'] = False
+                    response.data['employee_permissions'] = emp.permissions
+            except Exception:
+                response.data['must_change_password'] = False
+                response.data['employee_permissions'] = None
+        return response
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()

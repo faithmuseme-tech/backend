@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import generics, status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.contrib.auth import get_user_model
 from django.db.models import Sum, Count, Avg, F, DecimalField, ExpressionWrapper, FloatField
 from django.db.models.functions import TruncDate, TruncMonth
@@ -19,7 +19,9 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.text import slugify
 import uuid
 from .permissions import IsAdminUser
-from .models import SiteSettings, NewsletterSubscriber
+from .models import SiteSettings, NewsletterSubscriber, Employee, ALL_PAGES
+import secrets
+import string
 
 User = get_user_model()
 
@@ -805,3 +807,157 @@ class SiteSettingsView(APIView):
         cache.delete('site_settings')  # invalidate on update
         return Response({'seller_registration_open': s.seller_registration_open})
 
+
+
+def _generate_temp_password():
+    """Generate a 12-char password with letters, digits, and symbols."""
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*()-_=+"
+    while True:
+        pw = ''.join(secrets.choice(alphabet) for _ in range(12))
+        # Ensure at least one of each required type
+        if (any(c.islower() for c in pw) and
+                any(c.isupper() for c in pw) and
+                any(c.isdigit() for c in pw) and
+                any(c in "!@#$%^&*()-_=+" for c in pw)):
+            return pw
+
+
+class EmployeeListCreateView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        employees = Employee.objects.select_related('user', 'added_by').all().order_by('-created_at')
+        data = [
+            {
+                'id': e.id,
+                'user_id': e.user.id,
+                'phone': e.user.phone,
+                'first_name': e.user.first_name,
+                'last_name': e.user.last_name,
+                'avatar': e.user.avatar.url if e.user.avatar else None,
+                'permissions': e.permissions,
+                'must_change_password': e.must_change_password,
+                'added_by': e.added_by.phone if e.added_by else None,
+                'created_at': e.created_at,
+                'is_active': e.user.is_active,
+            }
+            for e in employees
+        ]
+        return Response({'employees': data, 'all_pages': ALL_PAGES})
+
+    def post(self, request):
+        phone = (request.data.get('phone') or '').strip()
+        permissions = request.data.get('permissions', [])
+        first_name = (request.data.get('first_name') or '').strip()
+
+        if not phone:
+            return Response({'error': 'Phone number is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(permissions, list) or not permissions:
+            return Response({'error': 'At least one permission is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        invalid = [p for p in permissions if p not in ALL_PAGES]
+        if invalid:
+            return Response({'error': f'Invalid permissions: {invalid}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if user already exists
+        existing_user = User.objects.filter(phone=phone).first()
+        if existing_user:
+            if hasattr(existing_user, 'employee_profile'):
+                return Response({'error': 'This phone number is already an employee.'}, status=status.HTTP_400_BAD_REQUEST)
+            if existing_user.is_admin or existing_user.is_staff:
+                return Response({'error': 'This user is already an admin.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        temp_pw = _generate_temp_password()
+
+        if existing_user:
+            user = existing_user
+        else:
+            user = User.objects.create_user(
+                phone=phone,
+                username=phone,
+                first_name=first_name or phone,
+                password=temp_pw,
+            )
+
+        # Mark as staff so IsAdminUser passes for their permitted pages
+        user.is_staff = True
+        user.set_password(temp_pw)
+        user.save(update_fields=['is_staff', 'password'])
+
+        employee = Employee.objects.create(
+            user=user,
+            added_by=request.user,
+            permissions=permissions,
+            must_change_password=True,
+            temp_password=temp_pw,
+        )
+
+        return Response({
+            'id': employee.id,
+            'phone': user.phone,
+            'first_name': user.first_name,
+            'permissions': employee.permissions,
+            'temp_password': temp_pw,  # shown once to admin
+            'must_change_password': True,
+        }, status=status.HTTP_201_CREATED)
+
+
+class EmployeeDetailView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def patch(self, request, pk):
+        try:
+            employee = Employee.objects.select_related('user').get(pk=pk)
+        except Employee.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        permissions = request.data.get('permissions')
+        if permissions is not None:
+            invalid = [p for p in permissions if p not in ALL_PAGES]
+            if invalid:
+                return Response({'error': f'Invalid permissions: {invalid}'}, status=status.HTTP_400_BAD_REQUEST)
+            employee.permissions = permissions
+            employee.save(update_fields=['permissions'])
+
+        return Response({'id': employee.id, 'permissions': employee.permissions})
+
+    def delete(self, request, pk):
+        try:
+            employee = Employee.objects.select_related('user').get(pk=pk)
+        except Employee.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        user = employee.user
+        user.is_staff = False
+        user.save(update_fields=['is_staff'])
+        employee.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class EmployeeSetPasswordView(APIView):
+    """Called by the employee on first login to set their own permanent password."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            employee = request.user.employee_profile
+        except Employee.DoesNotExist:
+            return Response({'error': 'Not an employee account.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not employee.must_change_password:
+            return Response({'error': 'Password already set.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        new_password = request.data.get('new_password', '').strip()
+        confirm = request.data.get('confirm_password', '').strip()
+
+        if len(new_password) < 8:
+            return Response({'error': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+        if new_password != confirm:
+            return Response({'error': 'Passwords do not match.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.set_password(new_password)
+        request.user.save()
+        employee.must_change_password = False
+        employee.temp_password = ''
+        employee.save(update_fields=['must_change_password', 'temp_password'])
+
+        return Response({'message': 'Password updated. You can now access your dashboard.'})

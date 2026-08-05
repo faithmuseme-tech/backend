@@ -5,6 +5,7 @@ from .views import (
     AdminOrderListView, AdminOrderDetailView, AdminOrderStatusUpdateView, AdminOrderLookupView,
     AdminProductListView, AdminProductDetailView, AdminProductImageView, AdminProductToggleView,
     AdminResetPasswordView, SiteSettingsView, NewsletterSubscribeView,
+    EmployeeListCreateView, EmployeeDetailView, EmployeeSetPasswordView,
 )
 
 urlpatterns = [
@@ -25,4 +26,7 @@ urlpatterns = [
     path('products/<int:pk>/toggle/', AdminProductToggleView.as_view(), name='admin_product_toggle'),
     path('settings/', SiteSettingsView.as_view(), name='admin_settings'),
     path('newsletter/subscribe/', NewsletterSubscribeView.as_view(), name='newsletter_subscribe'),
+    path('employees/', EmployeeListCreateView.as_view(), name='admin_employees'),
+    path('employees/<int:pk>/', EmployeeDetailView.as_view(), name='admin_employee_detail'),
+    path('employees/set-password/', EmployeeSetPasswordView.as_view(), name='employee_set_password'),
 ]
