@@ -2,30 +2,44 @@ from rest_framework import serializers
 from .models import Order, OrderItem, ReturnRequest
 
 
-# District sets — used to determine delivery zone
-CENTRAL  = {"buikwe","bukomansimbi","butambala","buvuma","gomba","kalangala","kalungu",
-             "kampala","kassanda","kayunga","kiboga","kyankwanzi","kyotera","luwero",
-             "lwengo","lyantonde","masaka","mityana","mpigi","mubende","mukono",
-             "nakaseke","nakasongola","rakai","sembabule","wakiso"}
-EASTERN  = {"amuria","budaka","bududa","bugiri","bugweri","bukedea","bukwa","bulambuli",
-             "busia","butaleja","butebo","buyende","iganga","jinja","kaberamaido",
-             "kaliro","kamuli","kapchorwa","katakwi","kibuku","kumi","kween","luuka",
-             "manafwa","mayuge","mbale","namayingo","namisindwa","namutumba","ngora",
-             "pallisa","serere","sironko","soroti","tororo"}
-WESTERN  = {"bundibugyo","bunyangabu","bushenyi","hoima","ibanda","isingiro","kabale",
-             "kabarole","kagadi","kakumiro","kamwenge","kanungu","kasese","kibaale",
-             "kiruhura","kiryandongo","kisoro","kyegegwa","kyenjojo","masindi","mbarara",
-             "mitooma","ntoroko","ntungamo","rubanda","rubirizi","rukiga","rukungiri",
-             "sheema","fort portal","fortportal"}
-
 # Delivery fee rules (based on total quantity across all cart items):
-# qty 1-3  -> UGX 15,000 flat
-# qty 4+   -> UGX 15,000 + (qty - 3) x 5,000
+# qty 0        -> 0
+# qty 1-3      -> UGX 15,000 flat
+# qty 4+       -> UGX 15,000 + (qty - 3) x 5,000
+# Applies to: Western, Eastern, Northern, Central (excluding Kampala)
+# Kampala: separate flat fee (configurable independently)
 
 BASE_FEE = 15_000
 EXTRA_PER_UNIT = 5_000
 BASE_QTY_LIMIT = 3
 FLAT_FEE = BASE_FEE  # kept for backward compat
+
+KAMPALA_FEE = 5_000  # Kampala-specific fee — change independently here
+
+# Districts covered by the quantity-based fee (Central excludes Kampala)
+_REGIONAL_DISTRICTS = {
+    "buikwe","bukomansimbi","butambala","buvuma","gomba","kalangala","kalungu",
+    "kassanda","kayunga","kiboga","kyankwanzi","kyotera","luwero",
+    "lwengo","lyantonde","masaka","mityana","mpigi","mubende","mukono",
+    "nakaseke","nakasongola","rakai","sembabule","wakiso",
+    # Eastern
+    "amuria","budaka","bududa","bugiri","bugweri","bukedea","bukwa","bulambuli",
+    "busia","butaleja","butebo","buyende","iganga","jinja","kaberamaido",
+    "kaliro","kamuli","kapchorwa","katakwi","kibuku","kumi","kween","luuka",
+    "manafwa","mayuge","mbale","namayingo","namisindwa","namutumba","ngora",
+    "pallisa","serere","sironko","soroti","tororo",
+    # Western
+    "bundibugyo","bunyangabu","bushenyi","hoima","ibanda","isingiro","kabale",
+    "kabarole","kagadi","kakumiro","kamwenge","kanungu","kasese","kibaale",
+    "kiruhura","kiryandongo","kisoro","kyegegwa","kyenjojo","masindi","mbarara",
+    "mitooma","ntoroko","ntungamo","rubanda","rubirizi","rukiga","rukungiri",
+    "sheema","fort portal","fortportal",
+    # Northern
+    "abim","adjumani","agago","alebtong","amolatar","amudat","amuru","apac",
+    "arua","dokolo","gulu","kaabong","kitgum","koboko","kole","kotido",
+    "kwania","lamwo","lira","maracha","moroto","moyo","napak","nebbi",
+    "nwoya","omoro","otuke","oyam","pader","pakwach","yumbe","zombo",
+}
 
 
 def get_zone_fee(city: str) -> int:
@@ -35,8 +49,18 @@ def get_zone_fee(city: str) -> int:
 
 def calculate_delivery_fee(city, items=None, item_count=None, subtotal=None):
     """
-    qty 1-3 -> 15,000; qty 4+ -> 15,000 + (qty - 3) * 5,000
+    Regional quantity-based delivery fee.
+    Kampala: flat KAMPALA_FEE.
+    Supported regions: qty 0 -> 0; qty 1-3 -> 15,000; qty 4+ -> 15,000 + (qty-3)*5,000.
     """
+    city_key = (city or "").strip().lower()
+
+    if city_key == "kampala":
+        return KAMPALA_FEE
+
+    if city_key not in _REGIONAL_DISTRICTS:
+        return 0
+
     total_qty = 0
     if items:
         for item in items:
@@ -44,6 +68,9 @@ def calculate_delivery_fee(city, items=None, item_count=None, subtotal=None):
                 total_qty += item.quantity
             elif isinstance(item, dict):
                 total_qty += item.get('quantity', 1)
+
+    if total_qty == 0:
+        return 0
     if total_qty <= BASE_QTY_LIMIT:
         return BASE_FEE
     return BASE_FEE + (total_qty - BASE_QTY_LIMIT) * EXTRA_PER_UNIT
