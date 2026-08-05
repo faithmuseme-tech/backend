@@ -19,6 +19,7 @@ class User(AbstractUser):
     zip_code = models.CharField(max_length=20, blank=True)
     is_trader = models.BooleanField(default=False)
     is_admin = models.BooleanField(default=False)
+    notifications_enabled = models.BooleanField(default=True)
 
 
 

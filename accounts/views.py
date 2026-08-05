@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.contrib.auth import get_user_model
 from .serializers import (
     RegisterSerializer, UserSerializer, ChangePasswordSerializer,
@@ -41,6 +42,7 @@ class RegisterView(generics.CreateAPIView):
 class ProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def get_object(self):
         return self.request.user
@@ -109,3 +111,32 @@ class CookiePreferenceView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class DeleteAccountView(APIView):
+    """Permanently deletes the user account and all associated data."""
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+        try:
+            RefreshToken(request.data.get('refresh', '')).blacklist()
+        except Exception:
+            pass
+        user.delete()
+        return Response({'message': 'Account permanently deleted.'}, status=status.HTTP_204_NO_CONTENT)
+
+
+class CloseAccountView(APIView):
+    """Deactivates the account (soft close — keeps data, blocks login)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        user.is_active = False
+        user.save(update_fields=['is_active'])
+        try:
+            RefreshToken(request.data.get('refresh', '')).blacklist()
+        except Exception:
+            pass
+        return Response({'message': 'Account closed.'}, status=status.HTTP_200_OK)

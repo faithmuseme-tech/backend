@@ -85,7 +85,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'crud_number', 'username', 'email', 'first_name', 'last_name',
             'phone', 'avatar', 'address', 'city', 'country', 'zip_code',
-            'is_trader', 'is_admin', 'trader_profile',
+            'is_trader', 'is_admin', 'trader_profile', 'notifications_enabled',
         )
         read_only_fields = ('id', 'crud_number', 'is_trader', 'is_admin')
 
