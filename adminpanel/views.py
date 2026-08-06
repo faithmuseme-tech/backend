@@ -18,7 +18,7 @@ from products.serializers import ProductListSerializer, ProductSerializer, Produ
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.utils.text import slugify
 import uuid
-from .permissions import IsAdminUser
+from .permissions import IsAdminUser, IsFullAdmin, HasPagePermission
 from .models import SiteSettings, NewsletterSubscriber, Employee, ALL_PAGES
 import secrets
 import string
@@ -27,7 +27,7 @@ User = get_user_model()
 
 
 class AdminStatsView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsFullAdmin]
 
     def get(self, request):
         from django.core.cache import cache
@@ -46,7 +46,7 @@ class AdminStatsView(APIView):
 
 
 class AdminAnalyticsView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("analytics")]
 
     def get(self, request):
         from django.core.cache import cache
@@ -550,7 +550,7 @@ class AdminAnalyticsView(APIView):
 
 
 class AdminUserListView(generics.ListAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("users")]
     serializer_class = AdminUserSerializer
 
     def get_queryset(self):
@@ -564,13 +564,13 @@ class AdminUserListView(generics.ListAPIView):
 
 
 class AdminUserDetailView(generics.RetrieveUpdateAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("users")]
     serializer_class = AdminUserSerializer
     queryset = User.objects.select_related('trader_profile').all()
 
 
 class AdminTraderListView(generics.ListAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("traders")]
     serializer_class = TraderProfileSerializer
 
     def get_queryset(self):
@@ -582,7 +582,7 @@ class AdminTraderListView(generics.ListAPIView):
 
 
 class AdminTraderApproveView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("traders")]
 
     def post(self, request, pk):
         try:
@@ -618,7 +618,7 @@ class AdminTraderApproveView(APIView):
 
 
 class AdminOrderListView(generics.ListAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("orders")]
     serializer_class = OrderSerializer
 
     def get_queryset(self):
@@ -633,7 +633,7 @@ class AdminOrderListView(generics.ListAPIView):
 
 
 class AdminOrderDetailView(generics.RetrieveUpdateAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("orders")]
     serializer_class = OrderSerializer
     queryset = Order.objects.select_related('user').prefetch_related('items__product__images', 'return_requests').all()
 
@@ -643,7 +643,7 @@ class AdminOrderDetailView(generics.RetrieveUpdateAPIView):
 
 class AdminOrderStatusUpdateView(APIView):
     """Admin-only endpoint to change an order's status."""
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("orders")]
 
     def post(self, request, pk):
         try:
@@ -663,7 +663,7 @@ class AdminOrderStatusUpdateView(APIView):
 
 class AdminOrderLookupView(APIView):
     """Lookup an order by its order_number prefix (first 8 chars) or full UUID."""
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("orders")]
 
     def get(self, request):
         order_number = request.query_params.get('order_number', '').strip().lstrip('#')
@@ -683,7 +683,7 @@ class AdminOrderLookupView(APIView):
 
 
 class AdminProductListView(generics.ListAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("products")]
     serializer_class = ProductListSerializer
 
     def get_queryset(self):
@@ -691,7 +691,7 @@ class AdminProductListView(generics.ListAPIView):
 
 
 class AdminProductDetailView(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("products")]
     serializer_class = ProductSerializer
     parser_classes = [MultiPartParser, FormParser]
 
@@ -714,7 +714,7 @@ class AdminProductDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 
 class AdminProductImageView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("products")]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, pk):
@@ -740,7 +740,7 @@ class AdminProductImageView(APIView):
 
 
 class AdminProductToggleView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("products")]
 
     def post(self, request, pk):
         try:
@@ -753,7 +753,7 @@ class AdminProductToggleView(APIView):
 
 
 class AdminResetPasswordView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasPagePermission("users")]
 
     def post(self, request, pk):
         try:
@@ -823,7 +823,7 @@ def _generate_temp_password():
 
 
 class EmployeeListCreateView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsFullAdmin]
 
     def get(self, request):
         employees = Employee.objects.select_related('user', 'added_by').all().order_by('-created_at')
@@ -904,7 +904,7 @@ class EmployeeListCreateView(APIView):
 
 
 class EmployeeDetailView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsFullAdmin]
 
     def patch(self, request, pk):
         try:
