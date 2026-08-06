@@ -35,16 +35,19 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 
 
 class ChatRoomSerializer(serializers.ModelSerializer):
-    user_email      = serializers.CharField(source='user.email', read_only=True)
-    user_name       = serializers.SerializerMethodField()
-    last_message    = serializers.SerializerMethodField()
-    unread_by_admin = serializers.IntegerField(read_only=True)
-    unread_by_user  = serializers.IntegerField(read_only=True)
+    user_email        = serializers.CharField(source='user.email', read_only=True)
+    user_name         = serializers.SerializerMethodField()
+    last_message      = serializers.SerializerMethodField()
+    unread_by_admin   = serializers.IntegerField(read_only=True)
+    unread_by_user    = serializers.IntegerField(read_only=True)
+    assigned_to_id    = serializers.IntegerField(source='assigned_to.id', read_only=True, allow_null=True)
+    assigned_to_name  = serializers.SerializerMethodField()
 
     class Meta:
         model  = ChatRoom
         fields = ('id', 'user', 'user_email', 'user_name', 'role',
-                  'unread_by_admin', 'unread_by_user', 'last_message', 'updated_at')
+                  'unread_by_admin', 'unread_by_user', 'last_message', 'updated_at',
+                  'assigned_to_id', 'assigned_to_name')
 
     def get_user_name(self, obj):
         return obj.user.first_name or obj.user.email.split('@')[0]
@@ -54,3 +57,8 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         if not msg:
             return None
         return {'body': msg.body[:60], 'created_at': msg.created_at}
+
+    def get_assigned_to_name(self, obj):
+        if not obj.assigned_to:
+            return None
+        return obj.assigned_to.first_name or obj.assigned_to.email or obj.assigned_to.phone

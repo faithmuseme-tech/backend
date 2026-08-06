@@ -10,10 +10,14 @@ class ChatRoom(models.Model):
     ROLE_TRADER   = 'trader'
     ROLE_CHOICES  = [(ROLE_CUSTOMER, 'Customer'), (ROLE_TRADER, 'Trader')]
 
-    user       = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='chat_room')
-    role       = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_CUSTOMER)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    user        = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='chat_room')
+    role        = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_CUSTOMER)
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='assigned_rooms',
+    )
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-updated_at']

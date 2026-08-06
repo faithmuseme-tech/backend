@@ -8,6 +8,7 @@ import cloudinary.uploader
 from config.cloudinary_utils import delete_chat_file
 from .models import ChatRoom, ChatMessage
 from .serializers import ChatRoomSerializer, ChatMessageSerializer
+from adminpanel.permissions import HasPagePermission
 
 User = get_user_model()
 
@@ -16,8 +17,8 @@ ALLOWED_EXTENSIONS    = ('.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt')
 MAX_FILE_MB           = 20
 
 
-def is_admin(user):
-    return user.is_staff or getattr(user, 'is_admin', False)
+def is_full_admin(user):
+    return getattr(user, 'is_admin', False)
 
 
 def _upload_to_cloudinary(file):
@@ -46,7 +47,12 @@ class MyRoomView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes     = [MultiPartParser, FormParser, JSONParser]
 
+    def _is_employee(self, user):
+        return user.is_staff and not user.is_admin and hasattr(user, 'employee_profile')
+
     def get(self, request):
+        if self._is_employee(request.user):
+            return Response({'error': 'Employees do not have a personal chat room.'}, status=status.HTTP_403_FORBIDDEN)
         role = 'trader' if getattr(request.user, 'is_trader', False) else 'customer'
         room, _ = ChatRoom.objects.get_or_create(user=request.user, defaults={'role': role})
         room.messages.exclude(sender=request.user).filter(is_read=False).update(is_read=True)
@@ -54,6 +60,8 @@ class MyRoomView(APIView):
         return Response({'room_id': room.id, 'messages': ChatMessageSerializer(messages, many=True).data})
 
     def post(self, request):
+        if self._is_employee(request.user):
+            return Response({'error': 'Employees do not have a personal chat room.'}, status=status.HTTP_403_FORBIDDEN)
         body = request.data.get('body', '').strip()
         file = request.FILES.get('file')
         if not body and not file:
@@ -135,6 +143,8 @@ class MyRoomUnreadView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        if request.user.is_staff and not request.user.is_admin:
+            return Response({'count': 0})
         try:
             room = request.user.chat_room
             count = room.messages.exclude(sender=request.user).filter(is_read=False).count()
@@ -144,41 +154,46 @@ class MyRoomUnreadView(APIView):
 
 
 class AdminRoomListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPagePermission('chat')]
 
     def get(self, request):
-        if not is_admin(request.user):
-            return Response(status=status.HTTP_403_FORBIDDEN)
-        rooms = ChatRoom.objects.select_related('user').prefetch_related('messages').all()
-        return Response(ChatRoomSerializer(rooms, many=True).data)
+        qs = ChatRoom.objects.select_related('user', 'assigned_to').prefetch_related('messages')
+        if not is_full_admin(request.user):
+            # Employees only see rooms assigned to them
+            qs = qs.filter(assigned_to=request.user)
+        return Response(ChatRoomSerializer(qs.all(), many=True).data)
 
 
 class AdminRoomDetailView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPagePermission('chat')]
     parser_classes     = [MultiPartParser, FormParser, JSONParser]
 
-    def get(self, request, room_id):
-        if not is_admin(request.user):
-            return Response(status=status.HTTP_403_FORBIDDEN)
+    def _get_room(self, request, room_id):
+        """Return room if accessible, else None."""
         try:
-            room = ChatRoom.objects.get(id=room_id)
+            room = ChatRoom.objects.select_related('user', 'assigned_to').get(id=room_id)
         except ChatRoom.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            return None, Response(status=status.HTTP_404_NOT_FOUND)
+        if not is_full_admin(request.user) and room.assigned_to_id != request.user.id:
+            return None, Response(status=status.HTTP_403_FORBIDDEN)
+        return room, None
+
+    def get(self, request, room_id):
+        room, err = self._get_room(request, room_id)
+        if err:
+            return err
         room.messages.filter(sender=room.user, is_read=False).update(is_read=True)
         messages = room.messages.select_related('sender').all()
         return Response({'room': ChatRoomSerializer(room).data, 'messages': ChatMessageSerializer(messages, many=True).data})
 
     def post(self, request, room_id):
-        if not is_admin(request.user):
-            return Response(status=status.HTTP_403_FORBIDDEN)
+        room, err = self._get_room(request, room_id)
+        if err:
+            return err
         body = request.data.get('body', '').strip()
         file = request.FILES.get('file')
         if not body and not file:
             return Response({'error': 'Message or file required.'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            room = ChatRoom.objects.get(id=room_id)
-        except ChatRoom.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
         file_url = file_type = file_name = ''
         if file:
             try:
@@ -201,13 +216,78 @@ class AdminRoomDetailView(APIView):
         return Response(ChatMessageSerializer(msg).data, status=status.HTTP_201_CREATED)
 
 
+class AdminRoomTransferView(APIView):
+    """Transfer a chat room to another admin/employee. Full admin only."""
+    permission_classes = [HasPagePermission('chat')]
+
+    def post(self, request, room_id):
+        if not is_full_admin(request.user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        try:
+            room = ChatRoom.objects.select_related('assigned_to').get(id=room_id)
+        except ChatRoom.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        assignee_id = request.data.get('assigned_to')  # null = unassign back to admin pool
+        note = request.data.get('note', '').strip()
+
+        if assignee_id is None:
+            room.assigned_to = None
+        else:
+            try:
+                assignee = User.objects.get(id=assignee_id, is_staff=True)
+            except User.DoesNotExist:
+                return Response({'error': 'Assignee not found or not a staff member.'}, status=status.HTTP_400_BAD_REQUEST)
+            room.assigned_to = assignee
+
+        room.save(update_fields=['assigned_to'])
+
+        # Post a system message so the customer sees the handoff note
+        if note:
+            ChatMessage.objects.create(
+                room=room, sender=request.user,
+                body=f"🔁 Transferred: {note}",
+            )
+            room.save()  # bump updated_at
+
+        return Response(ChatRoomSerializer(room).data)
+
+
 class AdminUnreadTotalView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasPagePermission('chat')]
 
     def get(self, request):
-        if not is_admin(request.user):
+        if not is_full_admin(request.user):
             return Response(status=status.HTTP_403_FORBIDDEN)
         total = ChatMessage.objects.filter(
             room__user__isnull=False, is_read=False
         ).exclude(sender__is_staff=True).exclude(sender__is_admin=True).count()
         return Response({'count': total})
+
+
+class ChatAssigneesView(APIView):
+    """List all staff members (admins + chat-permitted employees) for the transfer dropdown."""
+    permission_classes = [HasPagePermission('chat')]
+
+    def get(self, request):
+        if not is_full_admin(request.user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        staff = User.objects.filter(is_staff=True).select_related('employee_profile')
+        data = []
+        for u in staff:
+            if u.is_admin:
+                label = 'Admin'
+            else:
+                try:
+                    perms = u.employee_profile.permissions
+                    if 'chat' not in perms:
+                        continue
+                    label = 'Employee'
+                except Exception:
+                    continue
+            data.append({
+                'id': u.id,
+                'name': u.first_name or u.email or u.phone,
+                'label': label,
+            })
+        return Response(data)
